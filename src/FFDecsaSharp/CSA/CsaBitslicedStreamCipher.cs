@@ -114,6 +114,7 @@ internal static class CsaBitslicedStreamCipher
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static void Step(
         Span<ulong> a,
         Span<ulong> b,
@@ -193,6 +194,7 @@ internal static class CsaBitslicedStreamCipher
         q = s7b;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static void EvaluateSBoxes(
         ReadOnlySpan<ulong> a,
         ulong ones,
