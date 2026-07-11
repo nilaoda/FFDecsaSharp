@@ -22,31 +22,13 @@ Lane 0 state after `stream_cypher_group_init`:
 - `B f 8 1 a f 4 5 4 1 e`
 - `X 2 Y 0 Z 1 D 1 E 5 F 5 p1 q1 r0`
 
-## Divergence Found
+## Scalar Resolution
 
-The first C# scalar draft matched the first two internal steps but diverged by the third internal step of initialization.
+The first draft was discarded because it attempted to reproduce the bit-sliced boolean network without fully preserving its lane semantics. The completed `CsaStreamCipher` instead implements the mathematically equivalent single-lane state machine:
 
-Reference FFdecsa state around the divergence:
+- A and B are packed 10-nibble shift registers.
+- The seven FFdecsa S-box truth tables are evaluated directly for each 5-bit input.
+- The transposed initialization mapping is represented directly: the low nibble is `in2` and the high nibble is `in1`.
+- Generated output bits use the FFdecsa positions `7..0` directly, so a single lane does not require transpose buffers.
 
-- Step 0 X/Y/Z/p/q:
-  - `X f f f f`
-  - `Y 0 0 f f`
-  - `Z f f 0 0`
-  - `p 0`
-  - `q f`
-- Step 1 X/Y/Z/p/q:
-  - `X 80 00 80 00` at group level
-  - `Y 7f ff ff 00` at group level
-  - `Z 00 ff 7f ff` at group level
-  - `p 00`
-  - `q ff`
-- Step 2 expected X/Y/Z/p/q begins:
-  - `X 80 00 ff ff`
-  - `Y ff ff 00 00`
-  - `Z ff 00 00 00`
-  - `p 7f`
-  - `q 7f`
-
-## Next Calibration Step
-
-Compare the full group values written to `A[30]` and `B[30]` after internal step 1. The lane-0 bit can match while full group values differ, which then changes subsequent bit-sliced boolean expressions.
+This implementation now matches the recorded first and second FFdecsa output blocks and is covered by `CsaStreamCipherTests`. It also drives the end-to-end `Decryptor` packet test.

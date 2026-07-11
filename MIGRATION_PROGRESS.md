@@ -172,6 +172,24 @@ Begin BitSlice foundation work:
   - `dotnet test src/FFDecsaSharp.slnx`
   - Passed: 45
   - Failed: 0
-  - `dotnet build src/FFDecsaSharp.slnx`
+- `dotnet build src/FFDecsaSharp.slnx`
+  - Warnings: 0
+  - Errors: 0
+
+### Stream Cipher And Packet Decryptor
+
+- Completed scalar `CsaStreamCipher` with packed 10-nibble A/B registers and the seven reference S-box truth tables.
+- Matched the first two FFdecsa stream output groups for `test_1_key` and its initialization block.
+- Added public `Decryptor` and `PacketDecryptionResult` APIs.
+- Integrated stream generation, block deciphering, and CSA chaining for in-place decryption of one 188-byte TS packet.
+- Added end-to-end reference coverage for an odd-key packet prefix, plus clear and reserved scrambling-control behavior.
+- The hot decryption path uses spans and stack buffers only; it performs no managed allocations.
+
+### Verification
+
+- `dotnet test src/FFDecsaSharp.slnx`
+  - Passed: 51
+  - Failed: 0
+- `dotnet build src/FFDecsaSharp.slnx`
   - Warnings: 0
   - Errors: 0
