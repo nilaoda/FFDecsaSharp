@@ -812,3 +812,19 @@ Paired protocol (3 pairs HEAD then candidate + 1 C):
 
 No reliable win (host-noise dominated; pair1 regresses hard). The public dispatcher already branches to the 128-lane body for MaxLaneCount, so removing that branch is not a keep-grade structural cut. Restored HEAD.
 
+### Monomorphic-path StepFull128 (activeLanes → NOT only) — discarded
+
+Added `StepFull128` used only by `TryDecryptFullPayloads128`, keeping HEAD evaluation order and Span/`VectorWindow` ABI while rewriting all-ones `activeLanes` XORs to bitwise `~`.
+
+Correctness: 73 tests green; protocol checksum `76DC3CFC07B7D0F2`, 0 alloc.
+
+Paired protocol (3 pairs HEAD then candidate + 1 C):
+
+- pair1: HEAD **809.5 ns** / CAND **807.0 ns** (-0.31%)
+- pair2: HEAD **814.9 ns** / CAND **805.4 ns** (-1.16%)
+- pair3: HEAD **819.2 ns** / CAND **819.9 ns** (+0.09%)
+- means: HEAD ≈ **814.5 ns**, CAND ≈ **810.8 ns**
+- FFdecsa C: **533.5 ns**
+
+No keep-grade e2e win (sub-1% mean, pair3 slightly slower). Confirms earlier Step packaging discards: all-ones mask folding alone is not enough once the monomorphic full-payload path is already in place. Restored HEAD.
+
