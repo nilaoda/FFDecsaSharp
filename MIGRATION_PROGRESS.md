@@ -644,3 +644,27 @@ Isolated BDN `DecipherBlocksColumnMajor` short-job, 3 paired runs:
 
 No reliable win (slightly slower on average). Keep the direct per-byte scatter/gather form.
 
+### Decode ReverseBits table (kept)
+
+Replaced the SWAR 3-step `ReverseBits(byte)` helper used by `Decode128` / `TryDecode` with a 256-entry `ReadOnlySpan<byte>` lookup table.
+
+Rationale: each stream block decode performs many bit-reversals while unpacking 128-lane bitplanes to lane-major bytes. Table lookup removes the repeated mask/shift sequence on that hot path.
+
+Correctness:
+
+- `dotnet test src/FFDecsaSharp.slnx -c Release -m:1` — 73 passed.
+- Protocol checksum `76DC3CFC07B7D0F2`, `managed_allocated_bytes=0`, `verified=true`.
+
+Measurement (Apple M4, .NET 10.0.8):
+
+- Isolated BDN `GenerateBitslicedStream` short job, 3 paired HEAD/candidate runs:
+  - HEAD SWAR ReverseBits: 570.3 / 593.3 / 576.6 ns (mean ≈ **580.1 ns**)
+  - ReverseBits table: 257.7 / 258.4 / 256.5 ns (mean ≈ **257.5 ns**)
+  - ≈ **55%** isolated stream-path improvement (includes Decode128 over 23 blocks).
+- Protocol `ffdecsa-compare-v1` after the change (3 C# samples + 1 C):
+  - C#: **840.2 / 835.2 / 886.0 ns** per packet (best ≈ **835 ns**)
+  - FFdecsa C `PARALLEL_128_2LONG`: **533.5 ns**
+  - Managed share of C throughput ≈ **60–64%** in this window (previous best quiet samples were roughly mid-40%s / ~1050–1130 ns).
+
+Keep. Decode bit-reversal is a real residual cost; the table is 256 B and allocation-free.
+
