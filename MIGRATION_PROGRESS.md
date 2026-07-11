@@ -755,3 +755,18 @@ No reliable e2e win (candidate slightly slower on average; pair deltas within ho
 
 Discarded and restored HEAD. Do not revive more Step packaging / full-local / activeLanes-NOT specializations without a multi-pair protocol gain that exceeds host noise. Prefer genuinely new structural avenues (algorithm/layout), not another Step ABI reshape.
 
+### Double register history (64-step window / half AdvanceRegisterWindow) — discarded
+
+Increased `RegisterHistoryLength` from 32 to 64 steps (`StepsPerBlock * 2`) and only called `AdvanceRegisterWindow` when `registerOffset == 0`, so live A/B walk two stream blocks before the 640 B × 2 `CopyBlock` refresh. Stack banks grow from ~2.7 KB to ~4.7 KB per A/B side.
+
+Correctness: 73 tests green.
+
+Isolated BDN `GenerateBitslicedStream` ShortRun, 3 paired runs (Apple M4, .NET 10.0.8):
+
+- pair1: HEAD **239.9 ns** / CAND **254.6 ns** (+6.1%)
+- pair2: HEAD **250.4 ns** / CAND **241.2 ns** (-3.7%)
+- pair3: HEAD **244.2 ns** / CAND **243.6 ns** (-0.2%)
+- means: HEAD ≈ **244.8 ns**, CAND ≈ **246.5 ns**
+
+No reliable multi-pair win (pair1 regresses; overall mean slightly worse). Discarded after isolation. Same locality lesson as full-run history: larger virtual-register banks hurt more than fewer mid-run copies save. Keep the 32-step window + per-block `CopyBlock`.
+
