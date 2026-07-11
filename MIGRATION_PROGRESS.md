@@ -668,3 +668,26 @@ Measurement (Apple M4, .NET 10.0.8):
 
 Keep. Decode bit-reversal is a real residual cost; the table is 256 B and allocation-free.
 
+### Decode128 packaging after ReverseBits table (kept)
+
+Tightened the 128-lane decode path on top of the ReverseBits table:
+
+- Cache a `ref byte` into `ReverseBitsTable` and index with `Unsafe.Add` instead of re-entering the Span indexer helper.
+- Split each 128-lane plane into low/high 64-lane halves once per output byte.
+- Factor the 8-group unpack into `Decode128Half` with denser lane-store addressing (`baseOffset + n * BytesPerLane`).
+
+Correctness: 73 tests, protocol checksum `76DC3CFC07B7D0F2`, 0 managed allocation.
+
+Measurement (Apple M4, .NET 10.0.8):
+
+- Isolated BDN `GenerateBitslicedStream` short job, 3 paired runs vs ReverseBits-table HEAD:
+  - HEAD: 261.2 / 256.9 / 265.2 ns (mean ≈ **261.1 ns**)
+  - Decode128 packaging: 240.3 / 241.0 / 240.7 ns (mean ≈ **240.7 ns**)
+  - ≈ **7.8%** isolated stream-path improvement on top of the table win.
+- Protocol `ffdecsa-compare-v1` (3 C# + 1 C):
+  - C#: **825.2 / 835.7 / 824.8 ns** per packet
+  - FFdecsa C: **534.9 ns**
+  - Managed share of C ≈ **64–65%** in this window.
+
+Keep as a small structural packaging win on the remaining decode residual.
+
