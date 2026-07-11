@@ -254,3 +254,16 @@ Begin BitSlice foundation work:
   - Single packet decrypt: `12.51 us` per packet, `0 B` allocation.
   - 32 full-packet bit-sliced batch: `6.44 us` per packet, `0 B` allocation.
 - The transform table is constructed once during type initialization and is not part of the hot path.
+
+### Reference C Performance Calibration
+
+- Compiled the reference FFdecsa test driver with Apple Clang `-O3 -mcpu=apple-m4` on the same Apple M4 host.
+- Each reference build passed its five built-in correctness vectors before timing 30,000 complete packets.
+- FFdecsa throughput by portable bit-slice width:
+  - 32 lane (`PARALLEL_32_INT`): `816.9 Mbit/s`, `554,939 packets/s`.
+  - 64 lane (`PARALLEL_64_LONG`): `1,153.3 Mbit/s`, `783,515 packets/s`.
+  - 128 lane (`PARALLEL_128_2LONG`): `2,919.7 Mbit/s`, `1,983,471 packets/s`.
+- Updated the C# batch benchmark to 64 packets, matching the current `ulong` bit-slice width:
+  - `6.112 us` per packet, approximately `163,612 packets/s` and `240.9 Mbit/s`, with `0 B` allocation.
+- This C# benchmark includes copying each source packet into its mutable work buffer, while the C test times decryption after its source buffer is prepared; therefore the C# number is conservative but not exactly identical work.
+- The remaining roughly 4.8x gap against the C 64-lane backend is now primarily the scalar per-packet block cipher and packet packing work, not the bit-sliced stream core.

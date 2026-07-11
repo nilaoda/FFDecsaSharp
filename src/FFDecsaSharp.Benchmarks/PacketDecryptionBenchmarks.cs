@@ -9,7 +9,7 @@ namespace FFDecsaSharp.Benchmarks;
 [MemoryDiagnoser]
 public class PacketDecryptionBenchmarks
 {
-    private const int BatchSize = 32;
+    private const int BatchSize = 64;
 
     private readonly byte[] _packet = new byte[188];
     private readonly byte[] _source = new byte[188];
