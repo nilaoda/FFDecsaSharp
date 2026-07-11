@@ -87,6 +87,13 @@ Begin BitSlice foundation work:
 
 ## 2026-07-11
 
+### Repository Tracking
+
+- Initialized the local Git repository on the `main` branch.
+- Created the baseline commit `7f7b322` (`chore: bootstrap FFDecsaSharp migration`).
+- Confirmed `.gitignore` excludes .NET build output, IDE state, test artifacts, and macOS metadata.
+- No remote is configured yet; connect the chosen private GitHub or GitLab repository before the next collaborative handoff.
+
 ### Verification
 
 - `MSBUILDDISABLENODEREUSE=1 DOTNET_CLI_DO_NOT_USE_MSBUILD_SERVER=1 dotnet build src/FFDecsaSharp.slnx --no-restore -m:1 /nr:false`
