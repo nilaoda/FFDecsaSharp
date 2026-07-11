@@ -541,8 +541,18 @@ internal static class CsaBitslicedStreamCipher
         Span<Vector128<ulong>> b,
         ref int registerOffset)
     {
-        a[..(RegisterLength * NibbleWidth)].CopyTo(a.Slice(RegisterHistoryLength * NibbleWidth, RegisterLength * NibbleWidth));
-        b[..(RegisterLength * NibbleWidth)].CopyTo(b.Slice(RegisterHistoryLength * NibbleWidth, RegisterLength * NibbleWidth));
+        // 10 nibbles * 4 bitplanes = 40 Vector128 values = 640 bytes per register bank.
+        const int LivePlaneBytes = RegisterLength * NibbleWidth * 16;
+        ref byte aSource = ref Unsafe.As<Vector128<ulong>, byte>(ref MemoryMarshal.GetReference(a));
+        ref byte bSource = ref Unsafe.As<Vector128<ulong>, byte>(ref MemoryMarshal.GetReference(b));
+        Unsafe.CopyBlockUnaligned(
+            ref Unsafe.Add(ref aSource, RegisterHistoryLength * NibbleWidth * 16),
+            ref aSource,
+            LivePlaneBytes);
+        Unsafe.CopyBlockUnaligned(
+            ref Unsafe.Add(ref bSource, RegisterHistoryLength * NibbleWidth * 16),
+            ref bSource,
+            LivePlaneBytes);
         registerOffset = RegisterHistoryLength;
     }
 

@@ -531,3 +531,25 @@ Measurement (Apple M4, .NET 10.0.8):
   - HEAD baseline: **27.79 ns**/block
   - ≈ **19%** isolated block-core improvement.
 - Full protocol e2e remains noise-dominated on this host (managed ~`1119–1175 ns`, C ~`534 ns` in the same window). Keep decision is based on the isolated block win plus unchanged correctness gates, not on a single noisy e2e sample.
+
+### Bulk Encode128 init path (discarded)
+
+Ported the inverse of the bulk 64×64 transpose as `Encode128` for full-lane `TryEncode` (once per batch init). Correctness passed (73 tests, matching protocol checksum), but:
+
+- Encode runs only once per 128-packet batch, so even a large isolated win cannot move e2e much.
+- The same bulk-transpose family already regressed as a decode replacement in Phase 3.
+- Alternating protocol samples were noise-dominated and did not show a reliable keep signal.
+
+Discarded. Prefer keeping the simple scalar init encode.
+
+### AdvanceRegisterWindow `CopyBlock` (kept)
+
+Replaced the two `Span.CopyTo` live-register copies in `AdvanceRegisterWindow` with `Unsafe.CopyBlockUnaligned` of the fixed 640-byte (40 × `Vector128`) live A/B banks.
+
+Correctness: 73 tests, protocol checksum `76DC3CFC07B7D0F2`, 0 managed allocation.
+
+Isolated BDN `GenerateBitslicedStream` short job on Apple M4:
+
+- CopyBlock path: **568–577 ns**/packet
+- Previous `Span.CopyTo` path: **633 ns**/packet (reconfirm noisy up to higher)
+- Clear isolated stream-kernel packaging win; retained.
