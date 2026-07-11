@@ -561,3 +561,11 @@ Flattened the 8×4 step nested loop into a 32-step plane writer with fixed `Unsa
 ### NativeAOT PerfHarness check
 
 Published `FFDecsaSharp.PerfHarness` with `PublishAot=true` / `OptimizationPreference=Speed` for `osx-arm64`. Protocol samples (~`1123–1140 ns`) did not beat the current RyuJIT path in the same window (~`1052–1175 ns`). No AOT-only algorithm change was required; keep measuring the RyuJIT build for the scoreboard.
+
+### Pre-expanded stream schedule planes (discarded)
+
+Precomputed full-lane all-ones/zero `Vector128` stream nibble planes on `ScheduledControlWord` and bulk-copied them into the A/B register window for 128-lane batches. Correctness passed, but the work is only once per batch and alternating protocol samples showed no reliable e2e gain. Discarded.
+
+### Optimized scalar TryEncode (discarded)
+
+Unrolled per-byte bit tests and precomputed lane masks for `TryEncode`. Correctness passed; protocol pairs were noise-dominated with no keep-grade gain (encode is once per batch). Discarded.
