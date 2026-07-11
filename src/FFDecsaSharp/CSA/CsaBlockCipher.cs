@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 namespace FFDecsaSharp.CSA;
 
 internal static class CsaBlockCipher
@@ -67,6 +69,7 @@ internal static class CsaBlockCipher
         state.Slice(offset, BlockSize).CopyTo(output);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     internal static void DecipherBlocks(
         ReadOnlySpan<byte> blockSchedule,
         ReadOnlySpan<byte> input,

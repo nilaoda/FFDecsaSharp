@@ -278,3 +278,9 @@ Begin BitSlice foundation work:
 - `dotnet test src/FFDecsaSharp.slnx`
   - Passed: 60
   - Failed: 0
+
+### JIT Hot-Loop Tuning
+
+- Marked the stable batch block-round loop and bit-sliced stream generator with `AggressiveOptimization`.
+- The 64-packet benchmark improved from `3.485 us` to `3.395 us` per packet, approximately a 2.6% reduction, with `0 B` allocation.
+- The optimization preserves the existing scalar and bit-sliced algorithms; it only guides Tier-1 JIT optimization of their hot loops.

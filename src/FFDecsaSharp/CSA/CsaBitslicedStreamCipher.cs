@@ -1,4 +1,5 @@
 using FFDecsaSharp.BitSlice;
+using System.Runtime.CompilerServices;
 
 namespace FFDecsaSharp.CSA;
 
@@ -7,6 +8,7 @@ internal static class CsaBitslicedStreamCipher
     private const int NibbleWidth = 4;
     private const int RegisterLength = 10;
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static bool TryGenerateBlocks(
         ReadOnlySpan<byte> streamA,
         ReadOnlySpan<byte> streamB,
