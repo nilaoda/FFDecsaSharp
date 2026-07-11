@@ -267,3 +267,14 @@ Begin BitSlice foundation work:
   - `6.112 us` per packet, approximately `163,612 packets/s` and `240.9 Mbit/s`, with `0 B` allocation.
 - This C# benchmark includes copying each source packet into its mutable work buffer, while the C test times decryption after its source buffer is prepared; therefore the C# number is conservative but not exactly identical work.
 - The remaining roughly 4.8x gap against the C 64-lane backend is now primarily the scalar per-packet block cipher and packet packing work, not the bit-sliced stream core.
+
+### Interleaved Batch Block Cipher
+
+- Added a scalar, cross-lane block cipher core that processes the same CSA round across every lane before advancing to the next round.
+- The implementation follows FFdecsa's batch state layout while deliberately avoiding hardware SIMD intrinsics.
+- Added a 64-block differential test against independent scalar deciphering and retained full packet-batch differential coverage.
+- On the 64-packet benchmark, the interleaved block core reduced throughput cost from `6.112 us` to `3.485 us` per packet, with `0 B` allocation.
+- This is approximately `286,944 packets/s` and `422.4 Mbit/s`; the gap to the C 64-lane reference is now roughly 2.7x.
+- `dotnet test src/FFDecsaSharp.slnx`
+  - Passed: 60
+  - Failed: 0

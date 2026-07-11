@@ -34,29 +34,49 @@ internal static class CsaBitslicedPacketCipher
             return false;
         }
 
-        Span<byte> chainingValue = stackalloc byte[CsaStreamCipher.BlockSize];
-        Span<byte> blockOutput = stackalloc byte[CsaBlockCipher.BlockSize];
+        Span<byte> chainingValues = stackalloc byte[packetCount * CsaStreamCipher.BlockSize];
+        Span<byte> blockOutput = stackalloc byte[packetCount * CsaBlockCipher.BlockSize];
+        Span<byte> blockState = stackalloc byte[packetCount * 64];
 
         for (int lane = 0; lane < packetCount; lane++)
         {
             Span<byte> payload = packets.Slice((lane * TransportStream.TransportPacket.Size) + 4, PayloadLength);
-            payload[..CsaStreamCipher.BlockSize].CopyTo(chainingValue);
+            payload[..CsaStreamCipher.BlockSize].CopyTo(chainingValues.Slice(lane * CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize));
 
-            for (int blockIndex = 0; blockIndex < StreamBlockCount; blockIndex++)
+        }
+
+        for (int blockIndex = 0; blockIndex < StreamBlockCount; blockIndex++)
+        {
+            CsaBlockCipher.DecipherBlocks(controlWord.BlockSchedule, chainingValues, blockOutput, packetCount, blockState);
+
+            for (int lane = 0; lane < packetCount; lane++)
             {
                 int currentOffset = blockIndex * CsaStreamCipher.BlockSize;
                 int nextOffset = currentOffset + CsaStreamCipher.BlockSize;
+                Span<byte> chainingValue = chainingValues.Slice(lane * CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize);
+                ReadOnlySpan<byte> decipheredBlock = blockOutput.Slice(lane * CsaBlockCipher.BlockSize, CsaBlockCipher.BlockSize);
+                Span<byte> payload = packets.Slice((lane * TransportStream.TransportPacket.Size) + 4, PayloadLength);
                 ReadOnlySpan<byte> streamOutput = streamBlocks.Slice(((lane * StreamBlockCount) + blockIndex) * CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize);
 
-                CsaBlockCipher.DecipherBlock(controlWord.BlockSchedule, chainingValue, blockOutput);
                 for (int byteIndex = 0; byteIndex < CsaStreamCipher.BlockSize; byteIndex++)
                 {
                     chainingValue[byteIndex] = (byte)(streamOutput[byteIndex] ^ payload[nextOffset + byteIndex]);
-                    payload[currentOffset + byteIndex] = (byte)(blockOutput[byteIndex] ^ chainingValue[byteIndex]);
+                    payload[currentOffset + byteIndex] = (byte)(decipheredBlock[byteIndex] ^ chainingValue[byteIndex]);
                 }
             }
+        }
 
-            CsaBlockCipher.DecipherBlock(controlWord.BlockSchedule, chainingValue, payload.Slice(PayloadLength - CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize));
+        CsaBlockCipher.DecipherBlocks(
+            controlWord.BlockSchedule,
+            chainingValues,
+            blockOutput,
+            packetCount,
+            blockState);
+        for (int lane = 0; lane < packetCount; lane++)
+        {
+            Span<byte> payload = packets.Slice((lane * TransportStream.TransportPacket.Size) + 4, PayloadLength);
+            blockOutput.Slice(lane * CsaBlockCipher.BlockSize, CsaBlockCipher.BlockSize)
+                .CopyTo(payload.Slice(PayloadLength - CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize));
         }
 
         return true;

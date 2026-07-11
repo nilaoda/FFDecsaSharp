@@ -3,6 +3,7 @@ namespace FFDecsaSharp.CSA;
 internal static class CsaBlockCipher
 {
     public const int BlockSize = 8;
+    private const int StateLength = 64;
 
     public static bool TryDecipherBlock(ReadOnlySpan<byte> blockSchedule, ReadOnlySpan<byte> input, Span<byte> output)
     {
@@ -25,10 +26,11 @@ internal static class CsaBlockCipher
             return false;
         }
 
+        Span<byte> state = stackalloc byte[StateLength];
         for (int i = 0; i < blockCount; i++)
         {
             int offset = i * BlockSize;
-            DecipherBlock(blockSchedule, input.Slice(offset, BlockSize), output.Slice(offset, BlockSize));
+            DecipherBlock(blockSchedule, input.Slice(offset, BlockSize), output.Slice(offset, BlockSize), state);
         }
 
         return true;
@@ -36,7 +38,12 @@ internal static class CsaBlockCipher
 
     internal static void DecipherBlock(ReadOnlySpan<byte> blockSchedule, ReadOnlySpan<byte> input, Span<byte> output)
     {
-        Span<byte> state = stackalloc byte[64];
+        Span<byte> state = stackalloc byte[StateLength];
+        DecipherBlock(blockSchedule, input, output, state);
+    }
+
+    internal static void DecipherBlock(ReadOnlySpan<byte> blockSchedule, ReadOnlySpan<byte> input, Span<byte> output, Span<byte> state)
+    {
         int offset = CsaKeySchedule.BlockScheduleLength;
         input[..BlockSize].CopyTo(state[offset..]);
 
@@ -58,6 +65,48 @@ internal static class CsaBlockCipher
         }
 
         state.Slice(offset, BlockSize).CopyTo(output);
+    }
+
+    internal static void DecipherBlocks(
+        ReadOnlySpan<byte> blockSchedule,
+        ReadOnlySpan<byte> input,
+        Span<byte> output,
+        int blockCount,
+        Span<byte> state)
+    {
+        int offset = CsaKeySchedule.BlockScheduleLength;
+
+        for (int blockIndex = 0; blockIndex < blockCount; blockIndex++)
+        {
+            input.Slice(blockIndex * BlockSize, BlockSize)
+                .CopyTo(state.Slice((blockIndex * StateLength) + offset, BlockSize));
+        }
+
+        ReadOnlySpan<ushort> transform = BlockTransform;
+        for (int round = CsaKeySchedule.BlockScheduleLength - 1; round >= 0; round--)
+        {
+            for (int blockIndex = 0; blockIndex < blockCount; blockIndex++)
+            {
+                int stateBase = blockIndex * StateLength;
+                ushort transformed = transform[blockSchedule[round] ^ state[stateBase + offset + 6]];
+                int stateOffset = stateBase + offset - 1;
+                byte sBoxOutput = (byte)(transformed >> 8);
+
+                state[stateOffset] = (byte)(state[stateOffset + 8] ^ sBoxOutput);
+                state[stateOffset + 6] ^= (byte)transformed;
+                state[stateOffset + 4] ^= state[stateOffset];
+                state[stateOffset + 3] ^= state[stateOffset];
+                state[stateOffset + 2] ^= state[stateOffset];
+            }
+
+            offset--;
+        }
+
+        for (int blockIndex = 0; blockIndex < blockCount; blockIndex++)
+        {
+            state.Slice((blockIndex * StateLength) + offset, BlockSize)
+                .CopyTo(output.Slice(blockIndex * BlockSize, BlockSize));
+        }
     }
 
     private static byte Permute(byte value)

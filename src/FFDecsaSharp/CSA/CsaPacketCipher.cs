@@ -16,6 +16,7 @@ internal static class CsaPacketCipher
 
         Span<byte> chainingValue = stackalloc byte[CsaStreamCipher.BlockSize];
         Span<byte> blockOutput = stackalloc byte[CsaBlockCipher.BlockSize];
+        Span<byte> blockState = stackalloc byte[64];
         Span<byte> streamOutput = stackalloc byte[CsaStreamCipher.BlockSize];
         payload[..CsaStreamCipher.BlockSize].CopyTo(chainingValue);
 
@@ -25,7 +26,7 @@ internal static class CsaPacketCipher
             int currentOffset = blockIndex * CsaStreamCipher.BlockSize;
             int nextOffset = currentOffset + CsaStreamCipher.BlockSize;
 
-            CsaBlockCipher.DecipherBlock(controlWord.BlockSchedule, chainingValue, blockOutput);
+            CsaBlockCipher.DecipherBlock(controlWord.BlockSchedule, chainingValue, blockOutput, blockState);
             streamCipher.GenerateBlock(streamOutput);
 
             for (int byteIndex = 0; byteIndex < CsaStreamCipher.BlockSize; byteIndex++)
@@ -36,7 +37,7 @@ internal static class CsaPacketCipher
         }
 
         int finalBlockOffset = (blockCount - 1) * CsaStreamCipher.BlockSize;
-        CsaBlockCipher.DecipherBlock(controlWord.BlockSchedule, chainingValue, payload.Slice(finalBlockOffset, CsaStreamCipher.BlockSize));
+        CsaBlockCipher.DecipherBlock(controlWord.BlockSchedule, chainingValue, payload.Slice(finalBlockOffset, CsaStreamCipher.BlockSize), blockState);
 
         int residueOffset = blockCount * CsaStreamCipher.BlockSize;
         if (residueOffset < payload.Length)
