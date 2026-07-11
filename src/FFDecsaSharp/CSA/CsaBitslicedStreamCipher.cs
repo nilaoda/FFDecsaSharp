@@ -244,10 +244,19 @@ internal static class CsaBitslicedStreamCipher
         AdvanceRegisterWindow(a, b, ref registerOffset);
         Span<Vector128<ulong>> outputPlanes = stackalloc Vector128<ulong>[BitSliceBlock.BitPlaneCount];
         Span<byte> streamOutput = stackalloc byte[BitSliceBlock.BytesPerLane * BitSliceBlock.MaxLaneCount];
+        Span<int> payloadBases = stackalloc int[packetCount];
+        for (int lane = 0; lane < packetCount; lane++)
+        {
+            payloadBases[lane] = (packetIndexes[lane] * TransportStream.TransportPacket.Size) + PayloadOffset;
+        }
+
+        ref byte chainingValuesReference = ref MemoryMarshal.GetReference(chainingValues);
+        ref byte blockOutputReference = ref MemoryMarshal.GetReference(blockOutput);
+        ref byte streamOutputReference = ref MemoryMarshal.GetReference(streamOutput);
+        bool useDecode128 = packetCount == BitSliceBlock.MaxLaneCount;
 
         for (int blockIndex = 0; blockIndex < StreamBlockCount; blockIndex++)
         {
-            outputPlanes.Clear();
             for (int byteIndex = 0; byteIndex < CsaStreamCipher.BlockSize; byteIndex++)
             {
                 for (int step = 0; step < NibbleWidth; step++)
@@ -258,7 +267,11 @@ internal static class CsaBitslicedStreamCipher
                 }
             }
 
-            if (!BitSliceBlock.TryDecode(outputPlanes, packetCount, streamOutput))
+            if (useDecode128)
+            {
+                BitSliceBlock.Decode128(outputPlanes, streamOutput);
+            }
+            else if (!BitSliceBlock.TryDecode(outputPlanes, packetCount, streamOutput))
             {
                 return false;
             }
@@ -275,12 +288,10 @@ internal static class CsaBitslicedStreamCipher
             int nextOffset = currentOffset + CsaStreamCipher.BlockSize;
             for (int lane = 0; lane < packetCount; lane++)
             {
-                ref byte payloadReference = ref Unsafe.Add(
-                    ref packetsReference,
-                    (packetIndexes[lane] * TransportStream.TransportPacket.Size) + PayloadOffset);
-                ref byte chainingReference = ref MemoryMarshal.GetReference(chainingValues.Slice(lane * CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize));
-                ref byte blockReference = ref MemoryMarshal.GetReference(blockOutput.Slice(lane * CsaBlockCipher.BlockSize, CsaBlockCipher.BlockSize));
-                ref byte streamReference = ref MemoryMarshal.GetReference(streamOutput.Slice(lane * CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize));
+                ref byte payloadReference = ref Unsafe.Add(ref packetsReference, payloadBases[lane]);
+                ref byte chainingReference = ref Unsafe.Add(ref chainingValuesReference, lane * CsaStreamCipher.BlockSize);
+                ref byte blockReference = ref Unsafe.Add(ref blockOutputReference, lane * CsaBlockCipher.BlockSize);
+                ref byte streamReference = ref Unsafe.Add(ref streamOutputReference, lane * CsaStreamCipher.BlockSize);
                 ulong chainingValue = Unsafe.ReadUnaligned<ulong>(ref streamReference)
                     ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref payloadReference, nextOffset));
                 Unsafe.WriteUnaligned(ref chainingReference, chainingValue);
@@ -300,12 +311,11 @@ internal static class CsaBitslicedStreamCipher
             blockState,
             blockSBoxOutput,
             blockPermutationOutput);
+        int residualOffset = PayloadLength - CsaStreamCipher.BlockSize;
         for (int lane = 0; lane < packetCount; lane++)
         {
-            ref byte payloadReference = ref Unsafe.Add(
-                ref packetsReference,
-                (packetIndexes[lane] * TransportStream.TransportPacket.Size) + PayloadOffset + PayloadLength - CsaStreamCipher.BlockSize);
-            ref byte blockReference = ref MemoryMarshal.GetReference(blockOutput.Slice(lane * CsaBlockCipher.BlockSize, CsaBlockCipher.BlockSize));
+            ref byte payloadReference = ref Unsafe.Add(ref packetsReference, payloadBases[lane] + residualOffset);
+            ref byte blockReference = ref Unsafe.Add(ref blockOutputReference, lane * CsaBlockCipher.BlockSize);
             Unsafe.CopyBlockUnaligned(ref payloadReference, ref blockReference, CsaStreamCipher.BlockSize);
         }
 

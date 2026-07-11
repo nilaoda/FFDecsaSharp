@@ -90,7 +90,7 @@ internal static class BitSliceBlock
     }
 
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    private static void Decode128(ReadOnlySpan<Vector128<ulong>> sourcePlanes, Span<byte> destination)
+    internal static void Decode128(ReadOnlySpan<Vector128<ulong>> sourcePlanes, Span<byte> destination)
     {
         Span<byte> output = destination[..(MaxLaneCount * BytesPerLane)];
         ref Vector128<ulong> sourceReference = ref MemoryMarshal.GetReference(sourcePlanes);

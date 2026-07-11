@@ -449,3 +449,44 @@ Begin BitSlice foundation work:
   - both output checksums: `76DC3CFC07B7D0F2`.
 - The current managed path reaches approximately 44.5% of the calibrated reference C throughput. The remaining dominant cost is the 128-lane stream boolean network plus the scalar block S-box lookup, not allocation or packet-buffer copying.
 - `dotnet test src/FFDecsaSharp.slnx --no-restore -c Release -m:1` passed 73 tests.
+
+## 2026-07-12
+
+### Phase 1 — Stream-Loop Hygiene
+
+- Removed the per-block `outputPlanes.Clear()` in the interleaved packet path. Every output plane is fully overwritten by the 32 stream steps of the next block, so the zero fill was pure cost.
+- Cached per-lane payload bases once before the stream/block loop (`packetIndex * 188 + 4`) and replaced repeated `Slice`/`GetReference` address recomputation with fixed `Unsafe.Add` offsets for chaining, block, and stream words.
+- Exposed `BitSliceBlock.Decode128` as `internal` and, for full 128-lane batches, call it directly instead of going through `TryDecode` validation on every block.
+- Correctness: `dotnet test src/FFDecsaSharp.slnx --no-restore -c Release -m:1` passed 73 tests.
+- Apple M4, .NET 10.0.8, Arm64 RyuJIT, serialized `ffdecsa-compare-v1` runs, all with `0 B` managed allocation and matching checksum `76DC3CFC07B7D0F2`:
+  - C#: `1130.895 ns` per packet, `884,255` packets per second, `1301.6 Mbit/s` (previous median baseline `1137 ns`);
+  - FFdecsa C `PARALLEL_128_2LONG`: `502.008 ns` per packet, `1,992,001` packets per second, `2932.2 Mbit/s`.
+- Gain is small as expected (~0.5% e2e). The change primarily cleans addressing for Phase 2–3. Managed share of C throughput is about 44.4%.
+
+### Phase 2 — Local-only `Step` (discarded)
+
+- Replaced the six auxiliary `MemoryMarshal.CreateSpan` views over x/y/z/d/e/f with 24 `Vector128<ulong>` locals and inlined `UpdateFAndE`.
+- Correctness: 73 tests passed, checksum matched, 0 managed allocation.
+- Protocol throughput regressed: C# `1148.467 ns` per packet vs Phase 1 `1130.895 ns` (~1.6% slower). FFdecsa C was `495.570 ns` in that same pair of runs.
+- Discarded. On Arm64 RyuJIT the Span form was already free enough that the extra live locals and end-of-step store-back cost more than they saved. Do not revive without a measured ABI win.
+
+### Phase 3 — Bulk stream decode / lighter extract (discarded)
+
+Attempted structural replacements for the per-block `Decode128` SWAR path used by the full 128-lane interleaved packet pipeline.
+
+1. **Bulk 64×64 bit-matrix transpose** (`Transpose64x64` + `ReverseWithinBytes` per 64-lane half).
+   - Correctness: 73 tests passed; `output_fnv1a64=76DC3CFC07B7D0F2`; 0 managed allocation.
+   - Protocol throughput **regressed** versus the Phase 1 SWAR `Decode128` path (≈`1256 ns`/packet in the first clean pair of runs vs Phase 1 baseline ≈`1131–1240 ns` under the same noisy host window). Discarded.
+2. **Fused `Decode128XorChain`** that assembled stream words and applied chaining/payload XOR without a separate `streamOutput` buffer.
+   - Correctness: 73 tests, matching checksum, 0 alloc.
+   - Protocol throughput also regressed (≈`1247 ns`/packet). Discarded.
+3. **`Decode128Words`** writing contiguous `ulong` lane words instead of strided per-byte stores.
+   - Correctness OK; no measured e2e win over SWAR `Decode128`. Discarded.
+
+Notes:
+
+- FFdecsa's `trasp64_128_88cw` operates on a different lane/bit packing than this managed plane layout (lane0 is MSB of the high halfword here; FFdecsa's group-major `FFTABLEIN` packing is not bit-identical). A direct port of the C transpose is not a drop-in for our planes without a layout conversion that itself costs work.
+- On the current host, decode is not the remaining large structural win: the SWAR path already beats the bulk transpose prototype, so Phase 3's "largest remaining structural cut" hypothesis did not hold for this representation.
+- Do not revive bulk transpose / fused decode-chain without a measured isolated decode microbenchmark win **and** protocol e2e gain.
+
+Host noise observation during this phase: consecutive `ffdecsa-compare-v1` runs drifted (managed ≈`1230–1330 ns`, C ≈`530–557 ns`) versus earlier quieter samples (managed ≈`1131 ns`, C ≈`502 ns`). Relative prototype comparisons used paired runs; absolute ns should not be over-interpreted while the machine is thermally/noisy.
