@@ -553,3 +553,7 @@ Isolated BDN `GenerateBitslicedStream` short job on Apple M4:
 - CopyBlock path: **568–577 ns**/packet
 - Previous `Span.CopyTo` path: **633 ns**/packet (reconfirm noisy up to higher)
 - Clear isolated stream-kernel packaging win; retained.
+
+### Stream/block loop packaging (discarded)
+
+Flattened the 8×4 step nested loop into a 32-step plane writer with fixed `Unsafe.Add` stores and a full-128 chaining loop branch. Correctness passed, but alternating protocol pairs were noise-dominated and did not show a reliable e2e win over the CopyBlock baseline. Discarded.
