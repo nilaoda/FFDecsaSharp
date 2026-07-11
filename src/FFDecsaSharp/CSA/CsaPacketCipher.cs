@@ -25,8 +25,8 @@ internal static class CsaPacketCipher
             int currentOffset = blockIndex * CsaStreamCipher.BlockSize;
             int nextOffset = currentOffset + CsaStreamCipher.BlockSize;
 
-            CsaBlockCipher.TryDecipherBlock(controlWord.BlockSchedule, chainingValue, blockOutput);
-            streamCipher.TryGenerate(streamOutput);
+            CsaBlockCipher.DecipherBlock(controlWord.BlockSchedule, chainingValue, blockOutput);
+            streamCipher.GenerateBlock(streamOutput);
 
             for (int byteIndex = 0; byteIndex < CsaStreamCipher.BlockSize; byteIndex++)
             {
@@ -36,12 +36,12 @@ internal static class CsaPacketCipher
         }
 
         int finalBlockOffset = (blockCount - 1) * CsaStreamCipher.BlockSize;
-        CsaBlockCipher.TryDecipherBlock(controlWord.BlockSchedule, chainingValue, payload.Slice(finalBlockOffset, CsaStreamCipher.BlockSize));
+        CsaBlockCipher.DecipherBlock(controlWord.BlockSchedule, chainingValue, payload.Slice(finalBlockOffset, CsaStreamCipher.BlockSize));
 
         int residueOffset = blockCount * CsaStreamCipher.BlockSize;
         if (residueOffset < payload.Length)
         {
-            streamCipher.TryGenerate(streamOutput);
+            streamCipher.GenerateBlock(streamOutput);
             for (int byteIndex = residueOffset; byteIndex < payload.Length; byteIndex++)
             {
                 payload[byteIndex] ^= streamOutput[byteIndex - residueOffset];

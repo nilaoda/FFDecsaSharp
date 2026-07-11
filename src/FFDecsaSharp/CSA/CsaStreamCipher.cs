@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 namespace FFDecsaSharp.CSA;
 
 internal struct CsaStreamCipher
@@ -65,6 +67,12 @@ internal struct CsaStreamCipher
             return false;
         }
 
+        GenerateBlock(output);
+        return true;
+    }
+
+    internal void GenerateBlock(Span<byte> output)
+    {
         for (int byteIndex = 0; byteIndex < BlockSize; byteIndex++)
         {
             byte value = 0;
@@ -80,8 +88,6 @@ internal struct CsaStreamCipher
 
             output[byteIndex] = value;
         }
-
-        return true;
     }
 
     private void Step(byte inputA, byte inputB, bool includeInput)
@@ -156,21 +162,25 @@ internal struct CsaStreamCipher
         _q = (byte)(s7 & 1);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static byte GetRegisterNibble(ulong register, int index)
     {
         return (byte)((register >> (index * 4)) & 0x0F);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int GetBit(byte value, int bit)
     {
         return (value >> bit) & 1;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static byte GetSBoxValue(int sBox, int input)
     {
         return StreamSBoxes[(sBox * 32) + input];
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static byte RotateLeft(byte value)
     {
         return (byte)(((value << 1) & 0x0F) | (value >> 3));

@@ -11,7 +11,7 @@ internal static class CsaBlockCipher
             return false;
         }
 
-        DecipherBlockCore(blockSchedule, input, output);
+        DecipherBlock(blockSchedule, input, output);
         return true;
     }
 
@@ -28,13 +28,13 @@ internal static class CsaBlockCipher
         for (int i = 0; i < blockCount; i++)
         {
             int offset = i * BlockSize;
-            DecipherBlockCore(blockSchedule, input.Slice(offset, BlockSize), output.Slice(offset, BlockSize));
+            DecipherBlock(blockSchedule, input.Slice(offset, BlockSize), output.Slice(offset, BlockSize));
         }
 
         return true;
     }
 
-    private static void DecipherBlockCore(ReadOnlySpan<byte> blockSchedule, ReadOnlySpan<byte> input, Span<byte> output)
+    internal static void DecipherBlock(ReadOnlySpan<byte> blockSchedule, ReadOnlySpan<byte> input, Span<byte> output)
     {
         Span<byte> state = stackalloc byte[64];
         int offset = CsaKeySchedule.BlockScheduleLength;

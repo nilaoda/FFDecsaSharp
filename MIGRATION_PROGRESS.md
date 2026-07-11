@@ -193,3 +193,12 @@ Begin BitSlice foundation work:
 - `dotnet build src/FFDecsaSharp.slnx`
   - Warnings: 0
   - Errors: 0
+
+### Performance Baseline
+
+- Added a BenchmarkDotNet executable project for the public `Decryptor.Decrypt` hot path.
+- Removed redundant per-block argument checks inside the already validated packet decrypt loop and added focused inlining hints for stream-state accessors.
+- Short benchmark baseline on Apple M4, .NET 10.0.8, Arm64 RyuJIT:
+  - `DecryptPacket`: mean `14.74 us` per 188-byte packet.
+  - Managed allocation: `0 B` per operation.
+- Benchmark artifacts are excluded from source control. Run `dotnet run -c Release --project src/FFDecsaSharp.Benchmarks/FFDecsaSharp.Benchmarks.csproj -- --job short` to refresh this baseline.
