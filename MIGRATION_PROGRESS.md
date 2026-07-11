@@ -828,3 +828,16 @@ Paired protocol (3 pairs HEAD then candidate + 1 C):
 
 No keep-grade e2e win (sub-1% mean, pair3 slightly slower). Confirms earlier Step packaging discards: all-ones mask folding alone is not enough once the monomorphic full-payload path is already in place. Restored HEAD.
 
+### FFdecsa trasp_N_8 / trasp_8_N block load/store — discarded
+
+Replaced the scalar per-lane column-major load/store in `DecipherBlocksColumnMajor128` with FFdecsa-style bulk integer transpose (`trasp_N_8` / `trasp_8_N` for GROUP_PARALLELISM=128).
+
+Correctness: 73 tests green.
+
+Isolated BDN `DecipherBlocksColumnMajor` ShortRun paired samples:
+
+- pair1: HEAD **22.29 ns** / CAND **23.63 ns** (+6.0%)
+- pair2: HEAD **22.28 ns** / CAND **23.45 ns** (+5.3%)
+
+No keep-grade win; available pairs are at best noise and pair1 already regresses versus HEAD scalar scatter/gather. On this host the existing fixed-stride per-lane load/store remains hotter than the bulk int transpose stages. Restored HEAD.
+
