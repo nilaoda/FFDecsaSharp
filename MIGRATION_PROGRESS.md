@@ -618,3 +618,16 @@ Isolated BDN `GenerateBitslicedStream` short-job paired sample (pair 1, quiet en
 
 Discarded after the first pair because the regression is larger than host noise. Larger stack-resident A/B banks (tens of KB per bank) hurt cache locality more than the eliminated mid-run copies save. Keep the 32-step window + `CopyBlock` live-register advance.
 
+### Compact loop for PopulateTransformOutputs128 — discarded
+
+Replaced the fully unrolled 128-lane block S-box/transform populate with a tight `for (lane = 0; lane < 128; lane++)` loop, hypothesizing I-cache pressure from the giant unroll.
+
+Correctness: 73 tests green.
+
+Isolated BDN `DecipherBlocksColumnMajor` short-job pair 1:
+
+- HEAD (fully unrolled populate): **22.87 ns**/block
+- Compact loop: **38.31 ns**/block (~68% slower)
+
+Clear regression. Keep the unrolled populate. On this path the JIT-friendly unroll still wins over a compact loop.
+
