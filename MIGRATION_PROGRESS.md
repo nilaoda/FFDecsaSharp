@@ -719,3 +719,39 @@ Isolated BDN pair 1 vs packaging HEAD:
 
 Discarded. The extra 1 KB stack buffer, clear, and RMW ORs outweigh the strided-store cost on this path. Keep the direct per-byte lane stores.
 
+### Pre-expanded block transform schedule (roundKey^state) — discarded
+
+Candidate left dirty from prior session: build `ushort[56*256]` `ExpandedBlockTransforms` at schedule time and replace hot-path `roundKey ^ state` lookups with preexpanded tables for 128-lane `DecipherBlocksColumnMajor` / full-payload path.
+
+Correctness was not re-run in this session before discard; isolated block BDN short-job pairs from the prior handoff were noise-level (~0.7%: HEAD ≈ 22.62 ns vs candidate ≈ 22.45 ns). No keep-grade e2e evidence. Restored HEAD (`b3774e3`) without committing.
+
+Interpretation: schedule-time expansion removes a cheap XOR before a table load but does not move the dominant scalar S-box / column-major residual. Keep the live `roundKey ^ state` transform populate.
+
+### 128-lane StepFull rewrite (activeLanes → NOT + full-local ABI) — discarded
+
+Revisited the stream kernel body after decode packaging wins. Goal: structural Step/register-window work on the 128-lane hot path.
+
+Prototypes (both correctness-green: 73 tests):
+
+1. **`StepFull` with `activeLanes` all-ones rewritten to `~`**, same evaluation order as HEAD, still Span/VectorWindow auxiliary state.
+2. **`StepFull` full-local x/y/z/d/e/f ABI + direct `Unsafe.Add` A/B window + inlined F/E adder + `~` for all-ones**, same evaluation order (not S-box-first).
+
+Isolated BDN `GenerateBitslicedStream` ShortRun, 3 paired HEAD/candidate runs (Apple M4, .NET 10.0.8):
+
+| Variant | pair1 | pair2 | pair3 | mean |
+|--------|------:|------:|------:|-----:|
+| HEAD | 243.8 / 245.1 | 239.8 / 258.2 | 243.7 / 243.5 | ≈ **243–249 ns** |
+| NOT-only StepFull | 239.3 | 244.6 | 240.4 | ≈ **241.4 ns** (~2–5% isolated) |
+| Full-local StepFull | 236.2 | 234.3 | 236.0 | ≈ **235.5 ns** (~3% isolated vs paired HEAD ≈ 242.4 ns) |
+
+Paired protocol `ffdecsa-compare-v1` for full-local StepFull (3 pairs HEAD then candidate + 1 C):
+
+- HEAD: 820.8 / 833.6 / 819.3 ns (mean ≈ **824.6 ns**)
+- Candidate: 841.2 / 823.1 / 844.1 ns (mean ≈ **836.1 ns**)
+- FFdecsa C: **536.9 ns**
+- Checksum `76DC3CFC07B7D0F2`, `managed_allocated_bytes=0`, `verified=true` on all samples.
+
+No reliable e2e win (candidate slightly slower on average; pair deltas within host noise and not consistently negative). Isolated stream wins are small and do not survive the full interleaved pipeline.
+
+Discarded and restored HEAD. Do not revive more Step packaging / full-local / activeLanes-NOT specializations without a multi-pair protocol gain that exceeds host noise. Prefer genuinely new structural avenues (algorithm/layout), not another Step ABI reshape.
+
