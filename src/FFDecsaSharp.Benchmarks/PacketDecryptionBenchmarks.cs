@@ -18,6 +18,11 @@ public class PacketDecryptionBenchmarks
     private readonly PacketDecryptionResult[] _batchResults = new PacketDecryptionResult[BatchSize];
     private readonly byte[] _streamA = new byte[CsaKeySchedule.StreamNibbleCount];
     private readonly byte[] _streamB = new byte[CsaKeySchedule.StreamNibbleCount];
+    private readonly byte[] _blockSchedule = new byte[CsaKeySchedule.BlockScheduleLength];
+    private readonly byte[] _blockInput = new byte[CsaBlockCipher.BlockSize];
+    private readonly byte[] _blockOutput = new byte[CsaBlockCipher.BlockSize];
+    private readonly byte[] _blockInputBatch = new byte[CsaBlockCipher.BlockSize * BitSlice.BitSliceBlock.MaxLaneCount];
+    private readonly byte[] _blockOutputBatch = new byte[CsaBlockCipher.BlockSize * BitSlice.BitSliceBlock.MaxLaneCount];
     private readonly byte[] _bitslicedInitializationBlocks = new byte[CsaStreamCipher.BlockSize * BitSlice.BitSliceBlock.MaxLaneCount];
     private readonly byte[] _bitslicedOutput = new byte[CsaStreamCipher.BlockSize * 23 * BitSlice.BitSliceBlock.MaxLaneCount];
     private readonly Decryptor _decryptor;
@@ -46,7 +51,9 @@ public class PacketDecryptionBenchmarks
         for (int lane = 0; lane < BitSlice.BitSliceBlock.MaxLaneCount; lane++)
         {
             _source.AsSpan(4, CsaStreamCipher.BlockSize).CopyTo(_bitslicedInitializationBlocks.AsSpan(lane * CsaStreamCipher.BlockSize));
+            _source.AsSpan(4, CsaBlockCipher.BlockSize).CopyTo(_blockInputBatch.AsSpan(lane * CsaBlockCipher.BlockSize));
         }
+        _source.AsSpan(4, CsaBlockCipher.BlockSize).CopyTo(_blockInput);
 
         if (!ControlWords.TryCreate(even, odd, out ControlWords controlWords)
             || !Decryptor.TryCreate(controlWords, out Decryptor? decryptor))
@@ -58,6 +65,10 @@ public class PacketDecryptionBenchmarks
         if (!CsaKeySchedule.TryCreateStreamNibbles(odd, _streamA, _streamB))
         {
             throw new InvalidOperationException("Failed to create the benchmark stream schedule.");
+        }
+        if (!CsaKeySchedule.TryCreateBlockSchedule(odd, _blockSchedule))
+        {
+            throw new InvalidOperationException("Failed to create the benchmark block schedule.");
         }
     }
 
@@ -97,5 +108,29 @@ public class PacketDecryptionBenchmarks
             BitSlice.BitSliceBlock.MaxLaneCount,
             23,
             _bitslicedOutput);
+    }
+
+    /// <summary>
+    /// Deciphers one 8-byte CSA block with a scheduled control word.
+    /// </summary>
+    [Benchmark]
+    public void DecipherBlock()
+    {
+        CsaBlockCipher.DecipherBlock(_blockSchedule, _blockInput, _blockOutput);
+    }
+
+    /// <summary>
+    /// Deciphers 64 independent 8-byte CSA blocks with the scalar block core.
+    /// </summary>
+    [Benchmark(OperationsPerInvoke = BitSlice.BitSliceBlock.MaxLaneCount)]
+    public void DecipherBlockBatch()
+    {
+        for (int lane = 0; lane < BitSlice.BitSliceBlock.MaxLaneCount; lane++)
+        {
+            CsaBlockCipher.DecipherBlock(
+                _blockSchedule,
+                _blockInputBatch.AsSpan(lane * CsaBlockCipher.BlockSize, CsaBlockCipher.BlockSize),
+                _blockOutputBatch.AsSpan(lane * CsaBlockCipher.BlockSize, CsaBlockCipher.BlockSize));
+        }
     }
 }

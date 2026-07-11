@@ -243,3 +243,14 @@ Begin BitSlice foundation work:
 - `dotnet test src/FFDecsaSharp.slnx`
   - Passed: 59
   - Failed: 0
+
+### Block Cipher Lookup Optimization
+
+- Added a static 256-entry transform table that combines the block S-box output with its bit permutation.
+- The block decipher round now uses one transform lookup instead of a separate S-box lookup and six bit-mask shifts.
+- Short benchmark on Apple M4, .NET 10.0.8, Arm64 RyuJIT:
+  - Single block decipher: `268 ns` to `187 ns` per block.
+  - 64-block scalar loop: `273 ns` to `186 ns` per block.
+  - Single packet decrypt: `12.51 us` per packet, `0 B` allocation.
+  - 32 full-packet bit-sliced batch: `6.44 us` per packet, `0 B` allocation.
+- The transform table is constructed once during type initialization and is not part of the hot path.

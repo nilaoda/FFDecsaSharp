@@ -40,12 +40,13 @@ internal static class CsaBlockCipher
         int offset = CsaKeySchedule.BlockScheduleLength;
         input[..BlockSize].CopyTo(state[offset..]);
 
-        ReadOnlySpan<byte> sBox = BlockSBox;
+        ReadOnlySpan<ushort> transform = BlockTransform;
 
         for (int i = CsaKeySchedule.BlockScheduleLength - 1; i >= 0; i--)
         {
-            byte sBoxOutput = sBox[blockSchedule[i] ^ state[offset + 6]];
-            byte permutationOutput = Permute(sBoxOutput);
+            ushort transformed = transform[blockSchedule[i] ^ state[offset + 6]];
+            byte sBoxOutput = (byte)(transformed >> 8);
+            byte permutationOutput = (byte)transformed;
 
             offset--;
 
@@ -68,6 +69,24 @@ internal static class CsaBlockCipher
             | ((value & 0x10) >> 2)
             | ((value & 0x40) >> 6)
             | ((value & 0x80) >> 4));
+    }
+
+    private static ReadOnlySpan<ushort> BlockTransform => BlockTransformTable;
+
+    private static readonly ushort[] BlockTransformTable = CreateBlockTransformTable();
+
+    private static ushort[] CreateBlockTransformTable()
+    {
+        ushort[] table = new ushort[256];
+        ReadOnlySpan<byte> sBox = BlockSBox;
+
+        for (int input = 0; input < table.Length; input++)
+        {
+            byte sBoxOutput = sBox[input];
+            table[input] = (ushort)((sBoxOutput << 8) | Permute(sBoxOutput));
+        }
+
+        return table;
     }
 
     private static ReadOnlySpan<byte> BlockSBox =>
