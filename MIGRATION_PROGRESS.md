@@ -557,3 +557,7 @@ Isolated BDN `GenerateBitslicedStream` short job on Apple M4:
 ### Stream/block loop packaging (discarded)
 
 Flattened the 8×4 step nested loop into a 32-step plane writer with fixed `Unsafe.Add` stores and a full-128 chaining loop branch. Correctness passed, but alternating protocol pairs were noise-dominated and did not show a reliable e2e win over the CopyBlock baseline. Discarded.
+
+### NativeAOT PerfHarness check
+
+Published `FFDecsaSharp.PerfHarness` with `PublishAot=true` / `OptimizationPreference=Speed` for `osx-arm64`. Protocol samples (~`1123–1140 ns`) did not beat the current RyuJIT path in the same window (~`1052–1175 ns`). No AOT-only algorithm change was required; keep measuring the RyuJIT build for the scoreboard.
