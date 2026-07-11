@@ -121,6 +121,144 @@ internal static class CsaBitslicedStreamCipher
     }
 
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    internal static bool TryDecryptFullPayloads(
+        ScheduledControlWord controlWord,
+        Span<byte> packets,
+        ReadOnlySpan<int> packetIndexes)
+    {
+        const int PayloadOffset = 4;
+        const int PayloadLength = TransportStream.TransportPacket.Size - PayloadOffset;
+        const int BlockCount = PayloadLength / CsaStreamCipher.BlockSize;
+        const int StreamBlockCount = BlockCount - 1;
+
+        int packetCount = packetIndexes.Length;
+        if (packetCount is < 2 or > BitSliceBlock.MaxLaneCount)
+        {
+            return false;
+        }
+
+        Span<byte> initializationBlocks = stackalloc byte[packetCount * CsaStreamCipher.BlockSize];
+        Span<byte> chainingValues = stackalloc byte[packetCount * CsaStreamCipher.BlockSize];
+        Span<byte> blockOutput = stackalloc byte[packetCount * CsaBlockCipher.BlockSize];
+        Span<byte> blockState = stackalloc byte[packetCount * 64];
+
+        for (int lane = 0; lane < packetCount; lane++)
+        {
+            Span<byte> payload = packets.Slice((packetIndexes[lane] * TransportStream.TransportPacket.Size) + PayloadOffset, PayloadLength);
+            payload[..CsaStreamCipher.BlockSize].CopyTo(initializationBlocks.Slice(lane * CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize));
+            payload[..CsaStreamCipher.BlockSize].CopyTo(chainingValues.Slice(lane * CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize));
+        }
+
+        Vector128<ulong> activeLanes = CreateActiveLaneMask(packetCount);
+        Span<Vector128<ulong>> initializationPlanes = stackalloc Vector128<ulong>[BitSliceBlock.BitPlaneCount];
+        Span<Vector128<ulong>> a = stackalloc Vector128<ulong>[(RegisterHistoryLength + RegisterLength) * NibbleWidth];
+        Span<Vector128<ulong>> b = stackalloc Vector128<ulong>[(RegisterHistoryLength + RegisterLength) * NibbleWidth];
+        Span<Vector128<ulong>> x = stackalloc Vector128<ulong>[NibbleWidth];
+        Span<Vector128<ulong>> y = stackalloc Vector128<ulong>[NibbleWidth];
+        Span<Vector128<ulong>> z = stackalloc Vector128<ulong>[NibbleWidth];
+        Span<Vector128<ulong>> d = stackalloc Vector128<ulong>[NibbleWidth];
+        Span<Vector128<ulong>> e = stackalloc Vector128<ulong>[NibbleWidth];
+        Span<Vector128<ulong>> f = stackalloc Vector128<ulong>[NibbleWidth];
+        a.Clear();
+        b.Clear();
+        x.Clear();
+        y.Clear();
+        z.Clear();
+        d.Clear();
+        e.Clear();
+        f.Clear();
+
+        if (!BitSliceBlock.TryEncode(initializationBlocks, packetCount, initializationPlanes))
+        {
+            return false;
+        }
+
+        for (int nibbleIndex = 0; nibbleIndex < CsaKeySchedule.StreamNibbleCount; nibbleIndex++)
+        {
+            for (int bit = 0; bit < NibbleWidth; bit++)
+            {
+                Set(a, RegisterHistoryLength + nibbleIndex, bit, (controlWord.StreamA[nibbleIndex] & (1 << bit)) != 0 ? activeLanes : Vector128<ulong>.Zero);
+                Set(b, RegisterHistoryLength + nibbleIndex, bit, (controlWord.StreamB[nibbleIndex] & (1 << bit)) != 0 ? activeLanes : Vector128<ulong>.Zero);
+            }
+        }
+
+        Vector128<ulong> p = Vector128<ulong>.Zero;
+        Vector128<ulong> q = Vector128<ulong>.Zero;
+        Vector128<ulong> r = Vector128<ulong>.Zero;
+        int registerOffset = RegisterHistoryLength;
+        Span<Vector128<ulong>> inputA = stackalloc Vector128<ulong>[NibbleWidth];
+        Span<Vector128<ulong>> inputB = stackalloc Vector128<ulong>[NibbleWidth];
+
+        for (int byteIndex = 0; byteIndex < CsaStreamCipher.BlockSize; byteIndex++)
+        {
+            for (int bit = 0; bit < NibbleWidth; bit++)
+            {
+                inputA[bit] = initializationPlanes[(byteIndex * 8) + 3 - bit];
+                inputB[bit] = initializationPlanes[(byteIndex * 8) + 7 - bit];
+            }
+
+            for (int step = 0; step < NibbleWidth; step++)
+            {
+                bool useFirstInput = (step & 1) == 0;
+                Step(a, b, x, y, z, d, e, f, ref p, ref q, ref r, ref registerOffset, useFirstInput ? inputA : inputB, useFirstInput ? inputB : inputA, includeInput: true, activeLanes);
+            }
+        }
+
+        AdvanceRegisterWindow(a, b, ref registerOffset);
+        Span<Vector128<ulong>> outputPlanes = stackalloc Vector128<ulong>[BitSliceBlock.BitPlaneCount];
+        Span<byte> streamOutput = stackalloc byte[BitSliceBlock.BytesPerLane * BitSliceBlock.MaxLaneCount];
+
+        for (int blockIndex = 0; blockIndex < StreamBlockCount; blockIndex++)
+        {
+            outputPlanes.Clear();
+            for (int byteIndex = 0; byteIndex < CsaStreamCipher.BlockSize; byteIndex++)
+            {
+                for (int step = 0; step < NibbleWidth; step++)
+                {
+                    Step(a, b, x, y, z, d, e, f, ref p, ref q, ref r, ref registerOffset, ReadOnlySpan<Vector128<ulong>>.Empty, ReadOnlySpan<Vector128<ulong>>.Empty, includeInput: false, activeLanes);
+                    outputPlanes[(byteIndex * 8) + (step * 2)] = d[2] ^ d[3];
+                    outputPlanes[(byteIndex * 8) + (step * 2) + 1] = d[0] ^ d[1];
+                }
+            }
+
+            if (!BitSliceBlock.TryDecode(outputPlanes, packetCount, streamOutput))
+            {
+                return false;
+            }
+
+            CsaBlockCipher.DecipherBlocksColumnMajor(controlWord.BlockSchedule, chainingValues, blockOutput, packetCount, blockState);
+            int currentOffset = blockIndex * CsaStreamCipher.BlockSize;
+            int nextOffset = currentOffset + CsaStreamCipher.BlockSize;
+            for (int lane = 0; lane < packetCount; lane++)
+            {
+                Span<byte> payload = packets.Slice((packetIndexes[lane] * TransportStream.TransportPacket.Size) + PayloadOffset, PayloadLength);
+                ref byte payloadReference = ref MemoryMarshal.GetReference(payload);
+                ref byte chainingReference = ref MemoryMarshal.GetReference(chainingValues.Slice(lane * CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize));
+                ref byte blockReference = ref MemoryMarshal.GetReference(blockOutput.Slice(lane * CsaBlockCipher.BlockSize, CsaBlockCipher.BlockSize));
+                ref byte streamReference = ref MemoryMarshal.GetReference(streamOutput.Slice(lane * CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize));
+                ulong chainingValue = Unsafe.ReadUnaligned<ulong>(ref streamReference)
+                    ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref payloadReference, nextOffset));
+                Unsafe.WriteUnaligned(ref chainingReference, chainingValue);
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref payloadReference, currentOffset),
+                    Unsafe.ReadUnaligned<ulong>(ref blockReference) ^ chainingValue);
+            }
+
+            AdvanceRegisterWindow(a, b, ref registerOffset);
+        }
+
+        CsaBlockCipher.DecipherBlocksColumnMajor(controlWord.BlockSchedule, chainingValues, blockOutput, packetCount, blockState);
+        for (int lane = 0; lane < packetCount; lane++)
+        {
+            Span<byte> payload = packets.Slice((packetIndexes[lane] * TransportStream.TransportPacket.Size) + PayloadOffset, PayloadLength);
+            blockOutput.Slice(lane * CsaBlockCipher.BlockSize, CsaBlockCipher.BlockSize)
+                .CopyTo(payload.Slice(PayloadLength - CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize));
+        }
+
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static void Step(
         Span<Vector128<ulong>> a,
         Span<Vector128<ulong>> b,

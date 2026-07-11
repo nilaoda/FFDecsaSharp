@@ -383,3 +383,12 @@ Begin BitSlice foundation work:
   - 128-packet fixed-iteration harness, including source-buffer copying: `1695.6 ns` per packet.
 - The comparable FFdecsa `PARALLEL_128_2LONG` calibration remains `1,983,471 packets/s`, approximately `504 ns` per packet. The current end-to-end C# result is therefore about 32% of that C throughput. The benchmarks do not yet normalize packet-copying and API validation, but the gap is too large to attribute to that difference alone.
 - Profiling by isolated benchmark now identifies the stream kernel and scalar block S-box lookup as the dominant remaining costs. The next optimization should retain stream-state planes in local/vector registers or generate a fully specialized 128-lane step; generic `Span<Vector128<ulong>>` accesses still impose substantial register-pressure and addressing overhead.
+
+### Interleaved 128-Lane Packet Pipeline
+
+- Reworked the full-payload 128-lane path to generate one stream block and immediately consume it in the corresponding block-cipher/chaining iteration, matching FFdecsa's stream/block interleaving.
+- Removed the full `23 * laneCount * 8` stream-output work buffer from the hot packet path. The pipeline now retains only one decoded 8-byte stream block per active lane while preserving the public API and all scalar differential checks.
+- Apple M4, .NET 10.0.8, Arm64 RyuJIT, 128-packet MediumRun comparison, all with `0 B` managed allocation:
+  - prior 128-lane batch path: `1.605 us` per packet;
+  - interleaved pipeline: `1.594 us` per packet.
+- The fixed-iteration harness measured `1609.6 ns` per packet including source-buffer copying. The modest BenchmarkDotNet improvement is retained because it also reduces stack working-set and removes a full intermediate-buffer pass.
