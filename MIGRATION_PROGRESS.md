@@ -202,3 +202,11 @@ Begin BitSlice foundation work:
   - `DecryptPacket`: mean `14.74 us` per 188-byte packet.
   - Managed allocation: `0 B` per operation.
 - Benchmark artifacts are excluded from source control. Run `dotnet run -c Release --project src/FFDecsaSharp.Benchmarks/FFDecsaSharp.Benchmarks.csproj -- --job short` to refresh this baseline.
+
+### Full Packet Compatibility Coverage
+
+- Added the complete 184-byte FFdecsa `test_2` reference packet as an end-to-end `Decryptor` regression test.
+- The scalar implementation now verifies all 23 chained CSA blocks against the reference plaintext, including TS scrambling-control clearing.
+- `dotnet test src/FFDecsaSharp.slnx`
+  - Passed: 52
+  - Failed: 0
