@@ -291,3 +291,11 @@ Begin BitSlice foundation work:
 - The corrected 64-packet benchmark is `3.423 us` per packet with `0 B` allocation, a negligible difference from the pre-correction short-run sample.
 - The platform-neutral optimization phase has reached diminishing returns: combined lookup, cross-lane block rounds, work-buffer reuse, and JIT tuning reduced the 64-packet path from `6.112 us` to `3.423 us` per packet.
 - The next material performance opportunity is architecture-specific SIMD for the remaining cross-lane block S-box and state-update work.
+
+### Arm64 SIMD Table-Lookup Evaluation
+
+- Evaluated a NEON `TBL` implementation for the cross-lane block S-box transform on Apple M4.
+- The 256-entry table required four 64-byte `TBL4` groups plus high-index mask selection; the prototype passed the block and packet differential tests and the full 60-test suite.
+- It regressed the 64-packet benchmark to `4.514 us` per packet, versus the stable scalar interleaved baseline of `3.423 us` per packet.
+- The required state gather/scatter and dual table-selection work outweighed the table-lookup benefit, so this prototype was deliberately not retained.
+- Further SIMD work should target a representation that keeps block state resident in vector registers rather than vectorizing only the lookup stage.
