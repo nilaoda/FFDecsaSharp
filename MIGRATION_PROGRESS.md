@@ -314,3 +314,15 @@ Begin BitSlice foundation work:
 - Added a GitHub Actions workflow that restores, builds in Release configuration, and executes the full test suite on current Ubuntu, macOS, and Windows runners.
 - The workflow operates from `src/`, preserving the project-file structure while keeping repository automation in GitHub's conventional `.github/workflows` location.
 - It will run automatically when this local repository is connected to a GitHub remote and receives a push or pull request.
+
+### Cross-Packet Key Grouping
+
+- Changed `TryDecryptPackets` to collect up to 64 full-payload packets per control-word parity across the complete input span, rather than requiring a contiguous same-key run.
+- The bit-sliced packet core now consumes validated packet indexes, preserving packet order in the caller buffer while treating each selected packet as an independent lane.
+- A group containing one packet retains the scalar path; malformed packets, adaptation-field payloads, and residual-byte payloads retain their existing scalar handling.
+- Added scalar differential coverage for alternating even/odd full-payload packets and an alternating-key batch benchmark.
+- Apple M4 short-run results, all with 0 B managed allocation:
+  - 64 same-key full-payload packets: `3.469 us` per packet.
+  - 64 alternating-key full-payload packets: `3.955 us` per packet.
+- `dotnet build src/FFDecsaSharp.slnx --no-restore -m:1` completed with 0 warnings and 0 errors.
+- `dotnet test src/FFDecsaSharp.slnx --no-build` passed 63 tests.

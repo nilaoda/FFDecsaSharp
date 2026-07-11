@@ -6,10 +6,11 @@ internal static class CsaBitslicedPacketCipher
     private const int BlockCount = PayloadLength / CsaStreamCipher.BlockSize;
     private const int StreamBlockCount = BlockCount - 1;
 
-    public static bool TryDecryptFullPayloads(ScheduledControlWord controlWord, Span<byte> packets, int packetCount)
+    public static bool TryDecryptFullPayloads(ScheduledControlWord controlWord, Span<byte> packets, ReadOnlySpan<int> packetIndexes)
     {
+        int packetCount = packetIndexes.Length;
         if (packetCount is < 2 or > BitSlice.BitSliceBlock.MaxLaneCount
-            || packets.Length < packetCount * TransportStream.TransportPacket.Size)
+            || !HasValidPacketIndexes(packets.Length, packetIndexes))
         {
             return false;
         }
@@ -19,7 +20,7 @@ internal static class CsaBitslicedPacketCipher
 
         for (int lane = 0; lane < packetCount; lane++)
         {
-            packets.Slice((lane * TransportStream.TransportPacket.Size) + 4, CsaStreamCipher.BlockSize)
+            packets.Slice((packetIndexes[lane] * TransportStream.TransportPacket.Size) + 4, CsaStreamCipher.BlockSize)
                 .CopyTo(initializationBlocks.Slice(lane * CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize));
         }
 
@@ -40,9 +41,8 @@ internal static class CsaBitslicedPacketCipher
 
         for (int lane = 0; lane < packetCount; lane++)
         {
-            Span<byte> payload = packets.Slice((lane * TransportStream.TransportPacket.Size) + 4, PayloadLength);
+            Span<byte> payload = packets.Slice((packetIndexes[lane] * TransportStream.TransportPacket.Size) + 4, PayloadLength);
             payload[..CsaStreamCipher.BlockSize].CopyTo(chainingValues.Slice(lane * CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize));
-
         }
 
         for (int blockIndex = 0; blockIndex < StreamBlockCount; blockIndex++)
@@ -55,7 +55,7 @@ internal static class CsaBitslicedPacketCipher
                 int nextOffset = currentOffset + CsaStreamCipher.BlockSize;
                 Span<byte> chainingValue = chainingValues.Slice(lane * CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize);
                 ReadOnlySpan<byte> decipheredBlock = blockOutput.Slice(lane * CsaBlockCipher.BlockSize, CsaBlockCipher.BlockSize);
-                Span<byte> payload = packets.Slice((lane * TransportStream.TransportPacket.Size) + 4, PayloadLength);
+                Span<byte> payload = packets.Slice((packetIndexes[lane] * TransportStream.TransportPacket.Size) + 4, PayloadLength);
                 ReadOnlySpan<byte> streamOutput = streamBlocks.Slice(((lane * StreamBlockCount) + blockIndex) * CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize);
 
                 for (int byteIndex = 0; byteIndex < CsaStreamCipher.BlockSize; byteIndex++)
@@ -74,9 +74,24 @@ internal static class CsaBitslicedPacketCipher
             blockState);
         for (int lane = 0; lane < packetCount; lane++)
         {
-            Span<byte> payload = packets.Slice((lane * TransportStream.TransportPacket.Size) + 4, PayloadLength);
+            Span<byte> payload = packets.Slice((packetIndexes[lane] * TransportStream.TransportPacket.Size) + 4, PayloadLength);
             blockOutput.Slice(lane * CsaBlockCipher.BlockSize, CsaBlockCipher.BlockSize)
                 .CopyTo(payload.Slice(PayloadLength - CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize));
+        }
+
+        return true;
+    }
+
+    private static bool HasValidPacketIndexes(int packetsLength, ReadOnlySpan<int> packetIndexes)
+    {
+        int packetCount = packetsLength / TransportStream.TransportPacket.Size;
+
+        for (int index = 0; index < packetIndexes.Length; index++)
+        {
+            if ((uint)packetIndexes[index] >= (uint)packetCount)
+            {
+                return false;
+            }
         }
 
         return true;

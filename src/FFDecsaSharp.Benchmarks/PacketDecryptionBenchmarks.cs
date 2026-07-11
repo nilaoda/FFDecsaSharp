@@ -15,6 +15,8 @@ public class PacketDecryptionBenchmarks
     private readonly byte[] _source = new byte[188];
     private readonly byte[] _packetBatch = new byte[188 * BatchSize];
     private readonly byte[] _sourceBatch = new byte[188 * BatchSize];
+    private readonly byte[] _alternatingPacketBatch = new byte[188 * BatchSize];
+    private readonly byte[] _alternatingSourceBatch = new byte[188 * BatchSize];
     private readonly PacketDecryptionResult[] _batchResults = new PacketDecryptionResult[BatchSize];
     private readonly byte[] _streamA = new byte[CsaKeySchedule.StreamNibbleCount];
     private readonly byte[] _streamB = new byte[CsaKeySchedule.StreamNibbleCount];
@@ -47,6 +49,8 @@ public class PacketDecryptionBenchmarks
         for (int packetIndex = 0; packetIndex < BatchSize; packetIndex++)
         {
             _source.CopyTo(_sourceBatch, packetIndex * _source.Length);
+            _source.CopyTo(_alternatingSourceBatch, packetIndex * _source.Length);
+            _alternatingSourceBatch[(packetIndex * _source.Length) + 3] = (packetIndex & 1) == 0 ? (byte)0xD0 : (byte)0x90;
         }
         for (int lane = 0; lane < BitSlice.BitSliceBlock.MaxLaneCount; lane++)
         {
@@ -92,6 +96,17 @@ public class PacketDecryptionBenchmarks
     {
         _sourceBatch.CopyTo(_packetBatch, 0);
         return _decryptor.TryDecryptPackets(_packetBatch, _batchResults);
+    }
+
+    /// <summary>
+    /// Copies and decrypts a batch whose complete payload packets alternate between odd and even keys.
+    /// </summary>
+    /// <returns><see langword="true"/> when every packet result was written.</returns>
+    [Benchmark(OperationsPerInvoke = BatchSize)]
+    public bool DecryptAlternatingPacketBatch()
+    {
+        _alternatingSourceBatch.CopyTo(_alternatingPacketBatch, 0);
+        return _decryptor.TryDecryptPackets(_alternatingPacketBatch, _batchResults);
     }
 
     /// <summary>

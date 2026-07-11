@@ -71,47 +71,38 @@ public sealed class Decryptor
             return false;
         }
 
+        Span<int> evenPacketIndexes = stackalloc int[BitSlice.BitSliceBlock.MaxLaneCount];
+        Span<int> oddPacketIndexes = stackalloc int[BitSlice.BitSliceBlock.MaxLaneCount];
+        int evenPacketCount = 0;
+        int oddPacketCount = 0;
+
         for (int packetIndex = 0; packetIndex < packetCount; packetIndex++)
         {
             Span<byte> packet = packets.Slice(packetIndex * TransportPacket.Size, TransportPacket.Size);
             if (TryGetFullPayloadKeyKind(packet, out CsaKeyKind keyKind))
             {
-                int runLength = 1;
-                while (runLength < BitSlice.BitSliceBlock.MaxLaneCount
-                    && packetIndex + runLength < packetCount
-                    && TryGetFullPayloadKeyKind(packets.Slice((packetIndex + runLength) * TransportPacket.Size, TransportPacket.Size), out CsaKeyKind nextKeyKind)
-                    && nextKeyKind == keyKind)
-                {
-                    runLength++;
-                }
+                Span<int> packetIndexes = keyKind == CsaKeyKind.Even ? evenPacketIndexes : oddPacketIndexes;
+                ref int groupedPacketCount = ref keyKind == CsaKeyKind.Even ? ref evenPacketCount : ref oddPacketCount;
+                packetIndexes[groupedPacketCount++] = packetIndex;
 
-                if (runLength >= 2)
+                if (groupedPacketCount == packetIndexes.Length)
                 {
-                    for (int runIndex = 0; runIndex < runLength; runIndex++)
-                    {
-                        Span<byte> runPacket = packets.Slice((packetIndex + runIndex) * TransportPacket.Size, TransportPacket.Size);
-                        _ = CsaPacketPlanner.Prepare(runPacket, out _);
-                        results[packetIndex + runIndex] = PacketDecryptionResult.Decrypted;
-                    }
-
-                    ScheduledControlWord controlWord = _scheduledControlWords.Get(keyKind);
-                    if (!CsaBitslicedPacketCipher.TryDecryptFullPayloads(
-                        controlWord,
-                        packets.Slice(packetIndex * TransportPacket.Size, runLength * TransportPacket.Size),
-                        runLength))
+                    if (!TryDecryptFullPayloadGroup(keyKind, packets, packetIndexes, results))
                     {
                         return false;
                     }
 
-                    packetIndex += runLength - 1;
-                    continue;
+                    groupedPacketCount = 0;
                 }
+
+                continue;
             }
 
             results[packetIndex] = Decrypt(packet);
         }
 
-        return true;
+        return TryDecryptRemainingFullPayloadGroup(CsaKeyKind.Even, packets, evenPacketIndexes[..evenPacketCount], results)
+            && TryDecryptRemainingFullPayloadGroup(CsaKeyKind.Odd, packets, oddPacketIndexes[..oddPacketCount], results);
     }
 
     private static PacketDecryptionResult MapPlanningResult(CsaPacketPlanningResult result)
@@ -125,6 +116,64 @@ public sealed class Decryptor
             CsaPacketPlanningResult.PayloadTooSmall => PacketDecryptionResult.PayloadTooSmall,
             _ => PacketDecryptionResult.InvalidPacket,
         };
+    }
+
+    private bool TryDecryptRemainingFullPayloadGroup(
+        CsaKeyKind keyKind,
+        Span<byte> packets,
+        ReadOnlySpan<int> packetIndexes,
+        Span<PacketDecryptionResult> results)
+    {
+        if (packetIndexes.Length == 0)
+        {
+            return true;
+        }
+
+        if (packetIndexes.Length == 1)
+        {
+            int packetIndex = packetIndexes[0];
+            results[packetIndex] = Decrypt(packets.Slice(packetIndex * TransportPacket.Size, TransportPacket.Size));
+            return true;
+        }
+
+        return TryDecryptFullPayloadGroup(keyKind, packets, packetIndexes, results);
+    }
+
+    private bool TryDecryptFullPayloadGroup(
+        CsaKeyKind keyKind,
+        Span<byte> packets,
+        ReadOnlySpan<int> packetIndexes,
+        Span<PacketDecryptionResult> results)
+    {
+        for (int groupIndex = 0; groupIndex < packetIndexes.Length; groupIndex++)
+        {
+            int packetIndex = packetIndexes[groupIndex];
+            CsaPacketPlanningResult planningResult = CsaPacketPlanner.Prepare(
+                packets.Slice(packetIndex * TransportPacket.Size, TransportPacket.Size),
+                out CsaPacketWorkItem workItem);
+            if (planningResult != CsaPacketPlanningResult.NeedsDecryption
+                || workItem.KeyKind != keyKind
+                || workItem.PayloadOffset != 4
+                || workItem.PayloadLength != TransportPacket.Size - 4)
+            {
+                return false;
+            }
+        }
+
+        if (!CsaBitslicedPacketCipher.TryDecryptFullPayloads(
+            _scheduledControlWords.Get(keyKind),
+            packets,
+            packetIndexes))
+        {
+            return false;
+        }
+
+        for (int groupIndex = 0; groupIndex < packetIndexes.Length; groupIndex++)
+        {
+            results[packetIndexes[groupIndex]] = PacketDecryptionResult.Decrypted;
+        }
+
+        return true;
     }
 
     private static bool TryGetFullPayloadKeyKind(ReadOnlySpan<byte> packet, out CsaKeyKind keyKind)
