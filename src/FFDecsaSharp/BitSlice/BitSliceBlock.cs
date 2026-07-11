@@ -1,25 +1,27 @@
+using System.Runtime.Intrinsics;
+
 namespace FFDecsaSharp.BitSlice;
 
 internal static class BitSliceBlock
 {
     public const int BytesPerLane = 8;
     public const int BitPlaneCount = 64;
-    public const int MaxLaneCount = 64;
+    public const int MaxLaneCount = 128;
 
-    public static bool TryEncode(ReadOnlySpan<byte> source, int laneCount, Span<ulong> destinationPlanes)
+    public static bool TryEncode(ReadOnlySpan<byte> source, int laneCount, Span<Vector128<ulong>> destinationPlanes)
     {
         if (!HasValidArguments(source.Length, laneCount, destinationPlanes.Length))
         {
             return false;
         }
 
-        Span<ulong> planes = destinationPlanes[..BitPlaneCount];
+        Span<Vector128<ulong>> planes = destinationPlanes[..BitPlaneCount];
         planes.Clear();
 
         for (int lane = 0; lane < laneCount; lane++)
         {
             int sourceOffset = lane * BytesPerLane;
-            ulong laneMask = LaneMask(lane);
+            Vector128<ulong> laneMask = LaneMask(lane);
 
             for (int byteIndex = 0; byteIndex < BytesPerLane; byteIndex++)
             {
@@ -39,7 +41,7 @@ internal static class BitSliceBlock
         return true;
     }
 
-    public static bool TryDecode(ReadOnlySpan<ulong> sourcePlanes, int laneCount, Span<byte> destination)
+    public static bool TryDecode(ReadOnlySpan<Vector128<ulong>> sourcePlanes, int laneCount, Span<byte> destination)
     {
         if (!HasValidArguments(destination.Length, laneCount, sourcePlanes.Length))
         {
@@ -55,16 +57,17 @@ internal static class BitSliceBlock
 
             for (int laneGroup = 0; laneGroup < laneGroupCount; laneGroup++)
             {
-                int shift = 56 - (laneGroup * 8);
+                int vectorIndex = laneGroup >> 3;
+                int shift = 56 - ((laneGroup & 7) * 8);
                 ulong transposed = Transpose8By8(
-                    (ulong)ReverseBits((byte)(sourcePlanes[planeOffset] >> shift))
-                    | ((ulong)ReverseBits((byte)(sourcePlanes[planeOffset + 1] >> shift)) << 8)
-                    | ((ulong)ReverseBits((byte)(sourcePlanes[planeOffset + 2] >> shift)) << 16)
-                    | ((ulong)ReverseBits((byte)(sourcePlanes[planeOffset + 3] >> shift)) << 24)
-                    | ((ulong)ReverseBits((byte)(sourcePlanes[planeOffset + 4] >> shift)) << 32)
-                    | ((ulong)ReverseBits((byte)(sourcePlanes[planeOffset + 5] >> shift)) << 40)
-                    | ((ulong)ReverseBits((byte)(sourcePlanes[planeOffset + 6] >> shift)) << 48)
-                    | ((ulong)ReverseBits((byte)(sourcePlanes[planeOffset + 7] >> shift)) << 56));
+                    (ulong)ReverseBits((byte)(sourcePlanes[planeOffset].GetElement(vectorIndex) >> shift))
+                    | ((ulong)ReverseBits((byte)(sourcePlanes[planeOffset + 1].GetElement(vectorIndex) >> shift)) << 8)
+                    | ((ulong)ReverseBits((byte)(sourcePlanes[planeOffset + 2].GetElement(vectorIndex) >> shift)) << 16)
+                    | ((ulong)ReverseBits((byte)(sourcePlanes[planeOffset + 3].GetElement(vectorIndex) >> shift)) << 24)
+                    | ((ulong)ReverseBits((byte)(sourcePlanes[planeOffset + 4].GetElement(vectorIndex) >> shift)) << 32)
+                    | ((ulong)ReverseBits((byte)(sourcePlanes[planeOffset + 5].GetElement(vectorIndex) >> shift)) << 40)
+                    | ((ulong)ReverseBits((byte)(sourcePlanes[planeOffset + 6].GetElement(vectorIndex) >> shift)) << 48)
+                    | ((ulong)ReverseBits((byte)(sourcePlanes[planeOffset + 7].GetElement(vectorIndex) >> shift)) << 56));
 
                 int firstLane = laneGroup * 8;
                 int lanesInGroup = Math.Min(8, laneCount - firstLane);
@@ -85,9 +88,11 @@ internal static class BitSliceBlock
             && planeLength >= BitPlaneCount;
     }
 
-    private static ulong LaneMask(int lane)
+    private static Vector128<ulong> LaneMask(int lane)
     {
-        return 1UL << (MaxLaneCount - 1 - lane);
+        return lane < 64
+            ? Vector128.Create(1UL << (63 - lane), 0UL)
+            : Vector128.Create(0UL, 1UL << (127 - lane));
     }
 
     private static byte ReverseBits(byte value)

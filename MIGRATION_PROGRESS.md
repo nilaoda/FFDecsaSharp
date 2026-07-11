@@ -361,10 +361,25 @@ Begin BitSlice foundation work:
 
 ### NativeAOT Throughput Harness
 
-- Added `FFDecsaSharp.PerfHarness`, a dependency-free 64-packet throughput harness suitable for both JIT and NativeAOT execution.
+- Added `FFDecsaSharp.PerfHarness`, a dependency-free throughput harness suitable for both JIT and NativeAOT execution; it now exercises the 128-packet batch path.
 - BenchmarkDotNet itself cannot be published with NativeAOT because its reflection and diagnostics dependencies are trim/AOT-incompatible; the harness avoids those dependencies.
 - Apple M4 measurements, including packet-buffer copying:
   - Release JIT: `1761.1 ns` per packet;
   - default NativeAOT: `1985.3 ns` per packet;
   - NativeAOT with `OptimizationPreference=Speed`: `1833.4 ns` per packet.
 - Speed-preference AOT is now the harness default. It is close to the JIT result but does not yet outperform it, so further progress remains dependent on algorithm and data-layout optimization.
+
+### 128-Lane Vector Baseline
+
+- Replaced the 64-bit bit planes with `Vector128<ulong>` planes, allowing one stream-cipher boolean-network invocation to process 128 packets on Arm64 AdvSIMD and x86 SIMD-capable runtimes.
+- Extended the batch API, block-core temporary storage, throughput harness, isolated benchmarks, bit-plane round trips, stream differential test, and end-to-end differential test to 128 lanes. The end-to-end test compares 128 independent full-payload packets against the scalar decryptor.
+- Replaced the bit-sliced stream register copies with a ten-nibble circular register head, following FFdecsa's virtual shift-register principle. This eliminates the two 36-plane state copies previously performed on every stream step.
+- Replaced the circular register lookup with FFdecsa's 32-step contiguous virtual-register window. The stream hot loop now uses direct addresses and advances its ten live nibbles only between 8-byte stream blocks.
+- Updated the column-major block-core state update to use 16-byte `Vector128<byte>` updates. The block S-box remains scalar by design, matching the unavoidable lookup stage in FFdecsa.
+- Apple M4, .NET 10.0.8, Arm64 RyuJIT, short BenchmarkDotNet runs, all with `0 B` managed allocation:
+  - 128-lane stream generation for 23 blocks: `649.6 ns` per packet;
+  - 128-lane column-major block decipher: `40.67 ns` per block;
+  - 128-packet copy-and-decrypt BenchmarkDotNet path: `1.583 us` per packet;
+  - 128-packet fixed-iteration harness, including source-buffer copying: `1695.6 ns` per packet.
+- The comparable FFdecsa `PARALLEL_128_2LONG` calibration remains `1,983,471 packets/s`, approximately `504 ns` per packet. The current end-to-end C# result is therefore about 32% of that C throughput. The benchmarks do not yet normalize packet-copying and API validation, but the gap is too large to attribute to that difference alone.
+- Profiling by isolated benchmark now identifies the stream kernel and scalar block S-box lookup as the dominant remaining costs. The next optimization should retain stream-state planes in local/vector registers or generate a fully specialized 128-lane step; generic `Span<Vector128<ulong>>` accesses still impose substantial register-pressure and addressing overhead.

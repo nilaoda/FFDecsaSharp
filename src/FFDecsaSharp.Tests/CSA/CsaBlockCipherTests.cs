@@ -1,4 +1,5 @@
 using FFDecsaSharp.CSA;
+using FFDecsaSharp.BitSlice;
 
 namespace FFDecsaSharp.Tests.CSA;
 
@@ -84,7 +85,7 @@ public sealed class CsaBlockCipherTests
     [Fact]
     public void BatchCoreMatchesIndependentBlockDeciphering()
     {
-        const int blockCount = 64;
+        const int blockCount = BitSliceBlock.MaxLaneCount;
         ReadOnlySpan<byte> controlWord = [0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x00];
         Span<byte> schedule = stackalloc byte[CsaKeySchedule.BlockScheduleLength];
         Span<byte> input = stackalloc byte[blockCount * CsaBlockCipher.BlockSize];
@@ -114,7 +115,7 @@ public sealed class CsaBlockCipherTests
     [Fact]
     public void ColumnMajorBatchCoreMatchesIndependentBlockDeciphering()
     {
-        const int blockCount = 64;
+        const int blockCount = BitSliceBlock.MaxLaneCount;
         ReadOnlySpan<byte> controlWord = [0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x00];
         Span<byte> schedule = stackalloc byte[CsaKeySchedule.BlockScheduleLength];
         Span<byte> input = stackalloc byte[blockCount * CsaBlockCipher.BlockSize];

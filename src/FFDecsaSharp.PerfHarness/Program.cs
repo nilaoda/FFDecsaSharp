@@ -5,7 +5,7 @@ namespace FFDecsaSharp.PerfHarness;
 
 internal static class Program
 {
-    private const int BatchSize = 64;
+    private const int BatchSize = 128;
     private const int WarmupIterations = 5_000;
     private const int MeasurementIterations = 30_000;
 

@@ -1,6 +1,7 @@
 using FFDecsaSharp.BitSlice;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 
 namespace FFDecsaSharp.CSA;
 
@@ -8,6 +9,8 @@ internal static class CsaBitslicedStreamCipher
 {
     private const int NibbleWidth = 4;
     private const int RegisterLength = 10;
+    private const int StepsPerBlock = CsaStreamCipher.BlockSize * NibbleWidth;
+    private const int RegisterHistoryLength = StepsPerBlock;
 
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static bool TryGenerateBlocks(
@@ -28,16 +31,16 @@ internal static class CsaBitslicedStreamCipher
             return false;
         }
 
-        ulong activeLanes = CreateActiveLaneMask(laneCount);
-        Span<ulong> initializationPlanes = stackalloc ulong[BitSliceBlock.BitPlaneCount];
-        Span<ulong> a = stackalloc ulong[RegisterLength * NibbleWidth];
-        Span<ulong> b = stackalloc ulong[RegisterLength * NibbleWidth];
-        Span<ulong> x = stackalloc ulong[NibbleWidth];
-        Span<ulong> y = stackalloc ulong[NibbleWidth];
-        Span<ulong> z = stackalloc ulong[NibbleWidth];
-        Span<ulong> d = stackalloc ulong[NibbleWidth];
-        Span<ulong> e = stackalloc ulong[NibbleWidth];
-        Span<ulong> f = stackalloc ulong[NibbleWidth];
+        Vector128<ulong> activeLanes = CreateActiveLaneMask(laneCount);
+        Span<Vector128<ulong>> initializationPlanes = stackalloc Vector128<ulong>[BitSliceBlock.BitPlaneCount];
+        Span<Vector128<ulong>> a = stackalloc Vector128<ulong>[(RegisterHistoryLength + RegisterLength) * NibbleWidth];
+        Span<Vector128<ulong>> b = stackalloc Vector128<ulong>[(RegisterHistoryLength + RegisterLength) * NibbleWidth];
+        Span<Vector128<ulong>> x = stackalloc Vector128<ulong>[NibbleWidth];
+        Span<Vector128<ulong>> y = stackalloc Vector128<ulong>[NibbleWidth];
+        Span<Vector128<ulong>> z = stackalloc Vector128<ulong>[NibbleWidth];
+        Span<Vector128<ulong>> d = stackalloc Vector128<ulong>[NibbleWidth];
+        Span<Vector128<ulong>> e = stackalloc Vector128<ulong>[NibbleWidth];
+        Span<Vector128<ulong>> f = stackalloc Vector128<ulong>[NibbleWidth];
 
         a.Clear();
         b.Clear();
@@ -57,16 +60,17 @@ internal static class CsaBitslicedStreamCipher
         {
             for (int bit = 0; bit < NibbleWidth; bit++)
             {
-                Set(a, nibbleIndex, bit, (streamA[nibbleIndex] & (1 << bit)) != 0 ? activeLanes : 0);
-                Set(b, nibbleIndex, bit, (streamB[nibbleIndex] & (1 << bit)) != 0 ? activeLanes : 0);
+                Set(a, RegisterHistoryLength + nibbleIndex, bit, (streamA[nibbleIndex] & (1 << bit)) != 0 ? activeLanes : Vector128<ulong>.Zero);
+                Set(b, RegisterHistoryLength + nibbleIndex, bit, (streamB[nibbleIndex] & (1 << bit)) != 0 ? activeLanes : Vector128<ulong>.Zero);
             }
         }
 
-        ulong p = 0;
-        ulong q = 0;
-        ulong r = 0;
-        Span<ulong> inputA = stackalloc ulong[NibbleWidth];
-        Span<ulong> inputB = stackalloc ulong[NibbleWidth];
+        Vector128<ulong> p = Vector128<ulong>.Zero;
+        Vector128<ulong> q = Vector128<ulong>.Zero;
+        Vector128<ulong> r = Vector128<ulong>.Zero;
+        int registerOffset = RegisterHistoryLength;
+        Span<Vector128<ulong>> inputA = stackalloc Vector128<ulong>[NibbleWidth];
+        Span<Vector128<ulong>> inputB = stackalloc Vector128<ulong>[NibbleWidth];
 
         for (int byteIndex = 0; byteIndex < CsaStreamCipher.BlockSize; byteIndex++)
         {
@@ -79,11 +83,13 @@ internal static class CsaBitslicedStreamCipher
             for (int step = 0; step < NibbleWidth; step++)
             {
                 bool useFirstInput = (step & 1) == 0;
-                Step(a, b, x, y, z, d, e, f, ref p, ref q, ref r, useFirstInput ? inputA : inputB, useFirstInput ? inputB : inputA, includeInput: true, activeLanes);
+                Step(a, b, x, y, z, d, e, f, ref p, ref q, ref r, ref registerOffset, useFirstInput ? inputA : inputB, useFirstInput ? inputB : inputA, includeInput: true, activeLanes);
             }
         }
 
-        Span<ulong> outputPlanes = stackalloc ulong[BitSliceBlock.BitPlaneCount];
+        AdvanceRegisterWindow(a, b, ref registerOffset);
+
+        Span<Vector128<ulong>> outputPlanes = stackalloc Vector128<ulong>[BitSliceBlock.BitPlaneCount];
         Span<byte> groupOutput = stackalloc byte[BitSliceBlock.BytesPerLane * BitSliceBlock.MaxLaneCount];
 
         for (int blockIndex = 0; blockIndex < blockCount; blockIndex++)
@@ -94,7 +100,7 @@ internal static class CsaBitslicedStreamCipher
             {
                 for (int step = 0; step < NibbleWidth; step++)
                 {
-                    Step(a, b, x, y, z, d, e, f, ref p, ref q, ref r, ReadOnlySpan<ulong>.Empty, ReadOnlySpan<ulong>.Empty, includeInput: false, activeLanes);
+                    Step(a, b, x, y, z, d, e, f, ref p, ref q, ref r, ref registerOffset, ReadOnlySpan<Vector128<ulong>>.Empty, ReadOnlySpan<Vector128<ulong>>.Empty, includeInput: false, activeLanes);
                     outputPlanes[(byteIndex * 8) + (step * 2)] = d[2] ^ d[3];
                     outputPlanes[(byteIndex * 8) + (step * 2) + 1] = d[0] ^ d[1];
                 }
@@ -107,6 +113,8 @@ internal static class CsaBitslicedStreamCipher
 
             groupOutput[..(laneCount * CsaStreamCipher.BlockSize)]
                 .CopyTo(destination.Slice(blockIndex * laneCount * CsaStreamCipher.BlockSize, laneCount * CsaStreamCipher.BlockSize));
+
+            AdvanceRegisterWindow(a, b, ref registerOffset);
         }
 
         return true;
@@ -114,68 +122,80 @@ internal static class CsaBitslicedStreamCipher
 
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static void Step(
-        Span<ulong> a,
-        Span<ulong> b,
-        Span<ulong> x,
-        Span<ulong> y,
-        Span<ulong> z,
-        Span<ulong> d,
-        Span<ulong> e,
-        Span<ulong> f,
-        ref ulong p,
-        ref ulong q,
-        ref ulong r,
-        ReadOnlySpan<ulong> inputA,
-        ReadOnlySpan<ulong> inputB,
+        Span<Vector128<ulong>> a,
+        Span<Vector128<ulong>> b,
+        Span<Vector128<ulong>> x,
+        Span<Vector128<ulong>> y,
+        Span<Vector128<ulong>> z,
+        Span<Vector128<ulong>> d,
+        Span<Vector128<ulong>> e,
+        Span<Vector128<ulong>> f,
+        ref Vector128<ulong> p,
+        ref Vector128<ulong> q,
+        ref Vector128<ulong> r,
+        ref int registerOffset,
+        ReadOnlySpan<Vector128<ulong>> inputA,
+        ReadOnlySpan<Vector128<ulong>> inputB,
         bool includeInput,
-        ulong activeLanes)
+        Vector128<ulong> activeLanes)
     {
-        EvaluateSBoxes(a, activeLanes, out ulong s1a, out ulong s1b, out ulong s2a, out ulong s2b, out ulong s3a, out ulong s3b, out ulong s4a, out ulong s4b, out ulong s5a, out ulong s5b, out ulong s6a, out ulong s6b, out ulong s7a, out ulong s7b);
+        EvaluateSBoxes(a, registerOffset, activeLanes, out Vector128<ulong> s1a, out Vector128<ulong> s1b, out Vector128<ulong> s2a, out Vector128<ulong> s2b, out Vector128<ulong> s3a, out Vector128<ulong> s3b, out Vector128<ulong> s4a, out Vector128<ulong> s4b, out Vector128<ulong> s5a, out Vector128<ulong> s5b, out Vector128<ulong> s6a, out Vector128<ulong> s6b, out Vector128<ulong> s7a, out Vector128<ulong> s7b);
 
-        Span<ulong> nextA = stackalloc ulong[NibbleWidth];
-        Span<ulong> nextB = stackalloc ulong[NibbleWidth];
-        Span<ulong> previousF = stackalloc ulong[NibbleWidth];
-        Span<ulong> extraB = stackalloc ulong[NibbleWidth];
-        extraB[0] = Get(b, 8, 2) ^ Get(b, 5, 3) ^ Get(b, 2, 1) ^ Get(b, 7, 0);
-        extraB[1] = Get(b, 4, 3) ^ Get(b, 7, 2) ^ Get(b, 3, 0) ^ Get(b, 4, 1);
-        extraB[2] = Get(b, 5, 0) ^ Get(b, 7, 1) ^ Get(b, 2, 3) ^ Get(b, 3, 2);
-        extraB[3] = Get(b, 2, 0) ^ Get(b, 5, 1) ^ Get(b, 6, 2) ^ Get(b, 8, 3);
-
-        for (int bit = 0; bit < NibbleWidth; bit++)
+        Vector128<ulong> extraB0 = Get(b, registerOffset, 8, 2) ^ Get(b, registerOffset, 5, 3) ^ Get(b, registerOffset, 2, 1) ^ Get(b, registerOffset, 7, 0);
+        Vector128<ulong> extraB1 = Get(b, registerOffset, 4, 3) ^ Get(b, registerOffset, 7, 2) ^ Get(b, registerOffset, 3, 0) ^ Get(b, registerOffset, 4, 1);
+        Vector128<ulong> extraB2 = Get(b, registerOffset, 5, 0) ^ Get(b, registerOffset, 7, 1) ^ Get(b, registerOffset, 2, 3) ^ Get(b, registerOffset, 3, 2);
+        Vector128<ulong> extraB3 = Get(b, registerOffset, 2, 0) ^ Get(b, registerOffset, 5, 1) ^ Get(b, registerOffset, 6, 2) ^ Get(b, registerOffset, 8, 3);
+        Vector128<ulong> nextA0 = Get(a, registerOffset, 9, 0) ^ x[0];
+        Vector128<ulong> nextA1 = Get(a, registerOffset, 9, 1) ^ x[1];
+        Vector128<ulong> nextA2 = Get(a, registerOffset, 9, 2) ^ x[2];
+        Vector128<ulong> nextA3 = Get(a, registerOffset, 9, 3) ^ x[3];
+        Vector128<ulong> nextB0 = Get(b, registerOffset, 6, 0) ^ Get(b, registerOffset, 9, 0) ^ y[0];
+        Vector128<ulong> nextB1 = Get(b, registerOffset, 6, 1) ^ Get(b, registerOffset, 9, 1) ^ y[1];
+        Vector128<ulong> nextB2 = Get(b, registerOffset, 6, 2) ^ Get(b, registerOffset, 9, 2) ^ y[2];
+        Vector128<ulong> nextB3 = Get(b, registerOffset, 6, 3) ^ Get(b, registerOffset, 9, 3) ^ y[3];
+        if (includeInput)
         {
-            nextA[bit] = Get(a, 9, bit) ^ x[bit];
-            nextB[bit] = Get(b, 6, bit) ^ Get(b, 9, bit) ^ y[bit];
-            if (includeInput)
-            {
-                nextA[bit] ^= d[bit] ^ inputA[bit];
-                nextB[bit] ^= inputB[bit];
-            }
-
-            d[bit] = e[bit] ^ z[bit] ^ extraB[bit];
-            previousF[bit] = f[bit];
+            nextA0 ^= d[0] ^ inputA[0];
+            nextA1 ^= d[1] ^ inputA[1];
+            nextA2 ^= d[2] ^ inputA[2];
+            nextA3 ^= d[3] ^ inputA[3];
+            nextB0 ^= inputB[0];
+            nextB1 ^= inputB[1];
+            nextB2 ^= inputB[2];
+            nextB3 ^= inputB[3];
         }
 
-        ulong rotateBit3 = nextB[3];
-        nextB[3] ^= (nextB[3] ^ nextB[2]) & p;
-        nextB[2] ^= (nextB[2] ^ nextB[1]) & p;
-        nextB[1] ^= (nextB[1] ^ nextB[0]) & p;
-        nextB[0] ^= (nextB[0] ^ rotateBit3) & p;
+        Vector128<ulong> previousF0 = f[0];
+        Vector128<ulong> previousF1 = f[1];
+        Vector128<ulong> previousF2 = f[2];
+        Vector128<ulong> previousF3 = f[3];
+        d[0] = e[0] ^ z[0] ^ extraB0;
+        d[1] = e[1] ^ z[1] ^ extraB1;
+        d[2] = e[2] ^ z[2] ^ extraB2;
+        d[3] = e[3] ^ z[3] ^ extraB3;
 
-        ulong carry = r;
-        for (int bit = 0; bit < NibbleWidth; bit++)
-        {
-            ulong sum = z[bit] ^ e[bit] ^ carry;
-            ulong nextCarry = (z[bit] & e[bit]) | ((z[bit] ^ e[bit]) & carry);
-            f[bit] = e[bit] ^ (q & (sum ^ e[bit]));
-            e[bit] = previousF[bit];
-            carry = nextCarry;
-        }
+        Vector128<ulong> rotateBit3 = nextB3;
+        nextB3 ^= (nextB3 ^ nextB2) & p;
+        nextB2 ^= (nextB2 ^ nextB1) & p;
+        nextB1 ^= (nextB1 ^ nextB0) & p;
+        nextB0 ^= (nextB0 ^ rotateBit3) & p;
+
+        Vector128<ulong> carry = r;
+        UpdateFAndE(0, previousF0, ref carry, z, e, f, q);
+        UpdateFAndE(1, previousF1, ref carry, z, e, f, q);
+        UpdateFAndE(2, previousF2, ref carry, z, e, f, q);
+        UpdateFAndE(3, previousF3, ref carry, z, e, f, q);
 
         r ^= q & (carry ^ r);
-        a[..((RegisterLength - 1) * NibbleWidth)].CopyTo(a[NibbleWidth..]);
-        b[..((RegisterLength - 1) * NibbleWidth)].CopyTo(b[NibbleWidth..]);
-        nextA.CopyTo(a);
-        nextB.CopyTo(b);
+        registerOffset--;
+        Set(a, registerOffset, 0, nextA0);
+        Set(a, registerOffset, 1, nextA1);
+        Set(a, registerOffset, 2, nextA2);
+        Set(a, registerOffset, 3, nextA3);
+        Set(b, registerOffset, 0, nextB0);
+        Set(b, registerOffset, 1, nextB1);
+        Set(b, registerOffset, 2, nextB2);
+        Set(b, registerOffset, 3, nextB3);
         x[0] = s1a;
         x[1] = s2a;
         x[2] = s3b;
@@ -192,42 +212,60 @@ internal static class CsaBitslicedStreamCipher
         q = s7b;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void UpdateFAndE(
+        int bit,
+        Vector128<ulong> previousF,
+        ref Vector128<ulong> carry,
+        Span<Vector128<ulong>> z,
+        Span<Vector128<ulong>> e,
+        Span<Vector128<ulong>> f,
+        Vector128<ulong> q)
+    {
+        Vector128<ulong> sum = z[bit] ^ e[bit] ^ carry;
+        Vector128<ulong> nextCarry = (z[bit] & e[bit]) | ((z[bit] ^ e[bit]) & carry);
+        f[bit] = e[bit] ^ (q & (sum ^ e[bit]));
+        e[bit] = previousF;
+        carry = nextCarry;
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static void EvaluateSBoxes(
-        ReadOnlySpan<ulong> a,
-        ulong ones,
-        out ulong s1a,
-        out ulong s1b,
-        out ulong s2a,
-        out ulong s2b,
-        out ulong s3a,
-        out ulong s3b,
-        out ulong s4a,
-        out ulong s4b,
-        out ulong s5a,
-        out ulong s5b,
-        out ulong s6a,
-        out ulong s6b,
-        out ulong s7a,
-        out ulong s7b)
+        ReadOnlySpan<Vector128<ulong>> a,
+        int registerOffset,
+        Vector128<ulong> ones,
+        out Vector128<ulong> s1a,
+        out Vector128<ulong> s1b,
+        out Vector128<ulong> s2a,
+        out Vector128<ulong> s2b,
+        out Vector128<ulong> s3a,
+        out Vector128<ulong> s3b,
+        out Vector128<ulong> s4a,
+        out Vector128<ulong> s4b,
+        out Vector128<ulong> s5a,
+        out Vector128<ulong> s5b,
+        out Vector128<ulong> s6a,
+        out Vector128<ulong> s6b,
+        out Vector128<ulong> s7a,
+        out Vector128<ulong> s7b)
     {
-        ulong fe = Get(a, 3, 0);
-        ulong fa = Get(a, 0, 2);
-        ulong fb = Get(a, 5, 1);
-        ulong fc = Get(a, 6, 3);
-        ulong fd = Get(a, 8, 0);
-        ulong tmp0 = fa ^ (fb ^ ((((fa | fb) ^ fc) | (fc ^ fd)) ^ ones));
-        ulong tmp1 = (fa | fb) ^ ((fc & (fa | (fb ^ fd))) ^ ones);
-        ulong tmp2 = fa ^ ((fb & fd) ^ ((fa & fd) | fc));
-        ulong tmp3 = (fa & fc) ^ (fa ^ ((fa & fb) | fd));
+        Vector128<ulong> fe = Get(a, registerOffset, 3, 0);
+        Vector128<ulong> fa = Get(a, registerOffset, 0, 2);
+        Vector128<ulong> fb = Get(a, registerOffset, 5, 1);
+        Vector128<ulong> fc = Get(a, registerOffset, 6, 3);
+        Vector128<ulong> fd = Get(a, registerOffset, 8, 0);
+        Vector128<ulong> tmp0 = fa ^ (fb ^ ((((fa | fb) ^ fc) | (fc ^ fd)) ^ ones));
+        Vector128<ulong> tmp1 = (fa | fb) ^ ((fc & (fa | (fb ^ fd))) ^ ones);
+        Vector128<ulong> tmp2 = fa ^ ((fb & fd) ^ ((fa & fd) | fc));
+        Vector128<ulong> tmp3 = (fa & fc) ^ (fa ^ ((fa & fb) | fd));
         s1a = tmp0 ^ (fe & tmp1);
         s1b = tmp2 ^ (fe & tmp3);
 
-        fe = Get(a, 1, 1);
-        fa = Get(a, 2, 2);
-        fb = Get(a, 5, 3);
-        fc = Get(a, 6, 0);
-        fd = Get(a, 8, 1);
+        fe = Get(a, registerOffset, 1, 1);
+        fa = Get(a, registerOffset, 2, 2);
+        fb = Get(a, registerOffset, 5, 3);
+        fc = Get(a, registerOffset, 6, 0);
+        fd = Get(a, registerOffset, 8, 1);
         tmp0 = fa ^ ((fb & (fc | fd)) ^ (fc ^ (fd ^ ones)));
         tmp1 = (fa & (fb ^ fd)) | ((fa | fb) & fc);
         tmp2 = (fb & fd) ^ ((fa & fd) | (fb ^ (fc ^ ones)));
@@ -235,33 +273,33 @@ internal static class CsaBitslicedStreamCipher
         s2a = tmp0 ^ (fe & tmp1);
         s2b = tmp2 ^ (fe & tmp3);
 
-        fe = Get(a, 0, 3);
-        fa = Get(a, 1, 0);
-        fb = Get(a, 4, 1);
-        fc = Get(a, 4, 3);
-        fd = Get(a, 5, 2);
+        fe = Get(a, registerOffset, 0, 3);
+        fa = Get(a, registerOffset, 1, 0);
+        fb = Get(a, registerOffset, 4, 1);
+        fc = Get(a, registerOffset, 4, 3);
+        fd = Get(a, registerOffset, 5, 2);
         tmp0 = fa ^ (fb ^ ((fc & (fa | fd)) ^ fd));
         tmp1 = (fa & fc) ^ ((fa ^ fd) | ((fb | fc) ^ (fd ^ ones)));
         tmp2 = fa ^ (((fb ^ fc) & fd) ^ fc);
         s3a = tmp0 ^ ((fe ^ ones) & tmp1);
         s3b = tmp2 ^ fe;
 
-        fe = Get(a, 2, 3);
-        fa = Get(a, 0, 1);
-        fb = Get(a, 1, 3);
-        fc = Get(a, 3, 2);
-        fd = Get(a, 7, 0);
+        fe = Get(a, registerOffset, 2, 3);
+        fa = Get(a, registerOffset, 0, 1);
+        fb = Get(a, registerOffset, 1, 3);
+        fc = Get(a, registerOffset, 3, 2);
+        fd = Get(a, registerOffset, 7, 0);
         tmp0 = fa ^ ((fc & (fa ^ fd)) | (fb ^ (fc | (fd ^ ones))));
         tmp1 = (fa & fb) ^ (fb ^ (((fa | fc) & fd) ^ fc));
         tmp2 = fa ^ ((fb & fc) | (((fa & (fb ^ fd)) | fc) ^ fd));
         s4a = tmp0 ^ (fe & (tmp1 ^ tmp0));
         s4b = (s4a ^ tmp2) ^ fe;
 
-        fe = Get(a, 4, 2);
-        fa = Get(a, 3, 3);
-        fb = Get(a, 5, 0);
-        fc = Get(a, 7, 1);
-        fd = Get(a, 8, 2);
+        fe = Get(a, registerOffset, 4, 2);
+        fa = Get(a, registerOffset, 3, 3);
+        fb = Get(a, registerOffset, 5, 0);
+        fc = Get(a, registerOffset, 7, 1);
+        fd = Get(a, registerOffset, 8, 2);
         tmp0 = ((fa & (fb | fc)) ^ fb) | (((fa ^ fc) | fd) ^ ones);
         tmp1 = fb ^ ((fc ^ fd) & (fc ^ (fb | (fa ^ fd))));
         tmp2 = (fa & fc) ^ (fb ^ ((fb | (fa ^ fc)) & fd));
@@ -269,11 +307,11 @@ internal static class CsaBitslicedStreamCipher
         s5a = tmp0 ^ (fe & tmp1);
         s5b = tmp2 ^ (fe & tmp3);
 
-        fe = Get(a, 2, 1);
-        fa = Get(a, 3, 1);
-        fb = Get(a, 4, 0);
-        fc = Get(a, 6, 2);
-        fd = Get(a, 8, 3);
+        fe = Get(a, registerOffset, 2, 1);
+        fa = Get(a, registerOffset, 3, 1);
+        fb = Get(a, registerOffset, 4, 0);
+        fc = Get(a, registerOffset, 6, 2);
+        fd = Get(a, registerOffset, 8, 3);
         tmp0 = ((fa & fc) & fd) ^ ((fb & (fa | fd)) ^ fc);
         tmp1 = ((fa ^ fc) & fd) ^ ones;
         tmp2 = (fa & (fb | fc)) ^ (fb ^ ((fb & fc) | fd));
@@ -281,11 +319,11 @@ internal static class CsaBitslicedStreamCipher
         s6a = tmp0 ^ (fe & tmp1);
         s6b = tmp2 ^ (fe & tmp3);
 
-        fe = Get(a, 1, 2);
-        fa = Get(a, 2, 0);
-        fb = Get(a, 6, 1);
-        fc = Get(a, 7, 2);
-        fd = Get(a, 7, 3);
+        fe = Get(a, registerOffset, 1, 2);
+        fa = Get(a, registerOffset, 2, 0);
+        fb = Get(a, registerOffset, 6, 1);
+        fc = Get(a, registerOffset, 7, 2);
+        fd = Get(a, registerOffset, 7, 3);
         tmp0 = fb ^ ((fc & fd) | (fa ^ (fc ^ fd)));
         tmp1 = (fb | fd) & ((fa & fc) | (fb ^ (fc ^ fd)));
         tmp2 = (fa | fb) ^ ((fc & (fb | fd)) ^ fd);
@@ -294,24 +332,42 @@ internal static class CsaBitslicedStreamCipher
         s7b = tmp2 ^ (fe & tmp3);
     }
 
-    private static ulong CreateActiveLaneMask(int laneCount)
+    private static Vector128<ulong> CreateActiveLaneMask(int laneCount)
     {
         return laneCount switch
         {
-            0 => 0,
-            BitSliceBlock.MaxLaneCount => ulong.MaxValue,
-            _ => ulong.MaxValue << (BitSliceBlock.MaxLaneCount - laneCount),
+            0 => Vector128<ulong>.Zero,
+            <= 64 => Vector128.Create(ulong.MaxValue << (64 - laneCount), 0UL),
+            BitSliceBlock.MaxLaneCount => Vector128.Create(ulong.MaxValue, ulong.MaxValue),
+            _ => Vector128.Create(ulong.MaxValue, ulong.MaxValue << (BitSliceBlock.MaxLaneCount - laneCount)),
         };
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong Get(ReadOnlySpan<ulong> values, int nibble, int bit)
+    private static Vector128<ulong> Get(ReadOnlySpan<Vector128<ulong>> values, int nibble, int bit)
     {
         return Unsafe.Add(ref MemoryMarshal.GetReference(values), (nibble * NibbleWidth) + bit);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void Set(Span<ulong> values, int nibble, int bit, ulong value)
+    private static Vector128<ulong> Get(ReadOnlySpan<Vector128<ulong>> values, int registerOffset, int nibble, int bit)
+    {
+        return Get(values, registerOffset + nibble, bit);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void AdvanceRegisterWindow(
+        Span<Vector128<ulong>> a,
+        Span<Vector128<ulong>> b,
+        ref int registerOffset)
+    {
+        a[..(RegisterLength * NibbleWidth)].CopyTo(a.Slice(RegisterHistoryLength * NibbleWidth, RegisterLength * NibbleWidth));
+        b[..(RegisterLength * NibbleWidth)].CopyTo(b.Slice(RegisterHistoryLength * NibbleWidth, RegisterLength * NibbleWidth));
+        registerOffset = RegisterHistoryLength;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void Set(Span<Vector128<ulong>> values, int nibble, int bit, Vector128<ulong> value)
     {
         Unsafe.Add(ref MemoryMarshal.GetReference(values), (nibble * NibbleWidth) + bit) = value;
     }

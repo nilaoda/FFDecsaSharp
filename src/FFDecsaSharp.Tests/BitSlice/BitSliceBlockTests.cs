@@ -1,4 +1,5 @@
 using FFDecsaSharp.BitSlice;
+using System.Runtime.Intrinsics;
 
 namespace FFDecsaSharp.Tests.BitSlice;
 
@@ -7,7 +8,7 @@ public sealed class BitSliceBlockTests
     [Fact]
     public void TryEncodeRejectsInvalidArguments()
     {
-        Span<ulong> planes = stackalloc ulong[BitSliceBlock.BitPlaneCount];
+        Span<Vector128<ulong>> planes = stackalloc Vector128<ulong>[BitSliceBlock.BitPlaneCount];
         Span<byte> source = stackalloc byte[BitSliceBlock.BytesPerLane];
 
         Assert.False(BitSliceBlock.TryEncode(source, -1, planes));
@@ -19,7 +20,7 @@ public sealed class BitSliceBlockTests
     [Fact]
     public void TryDecodeRejectsInvalidArguments()
     {
-        Span<ulong> planes = stackalloc ulong[BitSliceBlock.BitPlaneCount];
+        Span<Vector128<ulong>> planes = stackalloc Vector128<ulong>[BitSliceBlock.BitPlaneCount];
         Span<byte> destination = stackalloc byte[BitSliceBlock.BytesPerLane];
 
         Assert.False(BitSliceBlock.TryDecode(planes, -1, destination));
@@ -31,15 +32,15 @@ public sealed class BitSliceBlockTests
     [Fact]
     public void TryEncodeClearsDestinationPlanes()
     {
-        Span<ulong> planes = stackalloc ulong[BitSliceBlock.BitPlaneCount];
-        planes.Fill(ulong.MaxValue);
+        Span<Vector128<ulong>> planes = stackalloc Vector128<ulong>[BitSliceBlock.BitPlaneCount];
+        planes.Fill(Vector128.Create(ulong.MaxValue));
         Span<byte> source = stackalloc byte[BitSliceBlock.BytesPerLane];
 
         Assert.True(BitSliceBlock.TryEncode(source, 1, planes));
 
         for (int i = 0; i < planes.Length; i++)
         {
-            Assert.Equal(0UL, planes[i]);
+            Assert.Equal(Vector128<ulong>.Zero, planes[i]);
         }
     }
 
@@ -49,25 +50,25 @@ public sealed class BitSliceBlockTests
         Span<byte> source = stackalloc byte[BitSliceBlock.BytesPerLane * 2];
         source[0] = 0x80;
         source[BitSliceBlock.BytesPerLane] = 0x40;
-        Span<ulong> planes = stackalloc ulong[BitSliceBlock.BitPlaneCount];
+        Span<Vector128<ulong>> planes = stackalloc Vector128<ulong>[BitSliceBlock.BitPlaneCount];
 
         Assert.True(BitSliceBlock.TryEncode(source, 2, planes));
 
-        Assert.Equal(1UL << 63, planes[0]);
-        Assert.Equal(1UL << 62, planes[1]);
+        Assert.Equal(Vector128.Create(1UL << 63, 0UL), planes[0]);
+        Assert.Equal(Vector128.Create(1UL << 62, 0UL), planes[1]);
 
         for (int i = 2; i < planes.Length; i++)
         {
-            Assert.Equal(0UL, planes[i]);
+        Assert.Equal(Vector128<ulong>.Zero, planes[i]);
         }
     }
 
     [Fact]
     public void TryDecodeMapsPlanesBackToLaneBytes()
     {
-        Span<ulong> planes = stackalloc ulong[BitSliceBlock.BitPlaneCount];
-        planes[0] = 1UL << 63;
-        planes[1] = 1UL << 62;
+        Span<Vector128<ulong>> planes = stackalloc Vector128<ulong>[BitSliceBlock.BitPlaneCount];
+        planes[0] = Vector128.Create(1UL << 63, 0UL);
+        planes[1] = Vector128.Create(1UL << 62, 0UL);
         Span<byte> destination = stackalloc byte[BitSliceBlock.BytesPerLane * 2];
 
         Assert.True(BitSliceBlock.TryDecode(planes, 2, destination));
@@ -77,11 +78,11 @@ public sealed class BitSliceBlockTests
     }
 
     [Fact]
-    public void EncodeThenDecodeRoundTripsSixtyFourLanes()
+    public void EncodeThenDecodeRoundTripsOneHundredTwentyEightLanes()
     {
         byte[] source = new byte[BitSliceBlock.BytesPerLane * BitSliceBlock.MaxLaneCount];
         byte[] destination = new byte[source.Length];
-        Span<ulong> planes = stackalloc ulong[BitSliceBlock.BitPlaneCount];
+        Span<Vector128<ulong>> planes = stackalloc Vector128<ulong>[BitSliceBlock.BitPlaneCount];
 
         for (int i = 0; i < source.Length; i++)
         {
@@ -98,12 +99,15 @@ public sealed class BitSliceBlockTests
     [InlineData(7)]
     [InlineData(8)]
     [InlineData(9)]
+    [InlineData(64)]
+    [InlineData(65)]
     [InlineData(63)]
+    [InlineData(127)]
     public void EncodeThenDecodeRoundTripsPartialLaneGroups(int laneCount)
     {
         byte[] source = new byte[BitSliceBlock.BytesPerLane * laneCount];
         byte[] destination = new byte[source.Length];
-        Span<ulong> planes = stackalloc ulong[BitSliceBlock.BitPlaneCount];
+        Span<Vector128<ulong>> planes = stackalloc Vector128<ulong>[BitSliceBlock.BitPlaneCount];
 
         for (int index = 0; index < source.Length; index++)
         {

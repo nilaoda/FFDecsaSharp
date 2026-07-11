@@ -9,7 +9,7 @@ namespace FFDecsaSharp.Benchmarks;
 [MemoryDiagnoser]
 public class PacketDecryptionBenchmarks
 {
-    private const int BatchSize = 64;
+    private const int BatchSize = BitSlice.BitSliceBlock.MaxLaneCount;
 
     private readonly byte[] _packet = new byte[188];
     private readonly byte[] _source = new byte[188];
@@ -111,7 +111,7 @@ public class PacketDecryptionBenchmarks
     }
 
     /// <summary>
-    /// Generates 23 stream blocks for 64 independent lanes with the bit-sliced stream kernel.
+    /// Generates 23 stream blocks for 128 independent lanes with the bit-sliced stream kernel.
     /// </summary>
     /// <returns><see langword="true"/> when the output buffer was populated.</returns>
     [Benchmark(OperationsPerInvoke = BitSlice.BitSliceBlock.MaxLaneCount)]
@@ -136,7 +136,7 @@ public class PacketDecryptionBenchmarks
     }
 
     /// <summary>
-    /// Deciphers 64 independent 8-byte CSA blocks with the scalar block core.
+    /// Deciphers 128 independent 8-byte CSA blocks with the scalar block core.
     /// </summary>
     [Benchmark(OperationsPerInvoke = BitSlice.BitSliceBlock.MaxLaneCount)]
     public void DecipherBlockBatch()
@@ -151,7 +151,7 @@ public class PacketDecryptionBenchmarks
     }
 
     /// <summary>
-    /// Deciphers 64 blocks with the stable interleaved batch core.
+    /// Deciphers 128 blocks with the stable interleaved batch core.
     /// </summary>
     [Benchmark(OperationsPerInvoke = BitSlice.BitSliceBlock.MaxLaneCount)]
     public void DecipherBlocksInterleaved()
@@ -165,7 +165,7 @@ public class PacketDecryptionBenchmarks
     }
 
     /// <summary>
-    /// Deciphers 64 blocks with the experimental column-major SWAR core.
+    /// Deciphers 128 blocks with the column-major vectorized core.
     /// </summary>
     [Benchmark(OperationsPerInvoke = BitSlice.BitSliceBlock.MaxLaneCount)]
     public void DecipherBlocksColumnMajor()

@@ -9,7 +9,7 @@ The library is span-first, NativeAOT-compatible, and keeps packet decryption pat
 - Decrypts MPEG-TS packets scrambled with even or odd DVB-CSA control words.
 - Supports full payloads, adaptation-field payload offsets, and residual payload bytes.
 - Provides single-packet and contiguous batch APIs.
-- Batches up to 64 full-payload packets per control word, including packets interleaved by key parity.
+- Batches up to 128 full-payload packets per control word, including packets interleaved by key parity.
 - Covers every packet shape exercised by the upstream FFdecsa test driver.
 - Does not currently provide encryption or a GUI application.
 

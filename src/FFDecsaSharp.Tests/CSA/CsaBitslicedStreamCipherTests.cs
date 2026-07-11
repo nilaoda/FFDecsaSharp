@@ -43,7 +43,7 @@ public sealed class CsaBitslicedStreamCipherTests
     [Fact]
     public void MatchesIndependentScalarLanes()
     {
-        const int laneCount = 64;
+        const int laneCount = 128;
         const int blockCount = 2;
         ReadOnlySpan<byte> controlWord = [0x07, 0xE0, 0x1B, 0x02, 0xC9, 0xE0, 0x45, 0xEE];
         Span<byte> streamA = stackalloc byte[CsaKeySchedule.StreamNibbleCount];
