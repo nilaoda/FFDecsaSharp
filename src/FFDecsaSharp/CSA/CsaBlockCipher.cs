@@ -135,14 +135,22 @@ internal static class CsaBlockCipher
         }
 
         ReadOnlySpan<ushort> transform = BlockTransform;
+        ref ushort transformReference = ref MemoryMarshal.GetReference(transform);
+        ref byte blockScheduleReference = ref MemoryMarshal.GetReference(blockSchedule);
+        ref byte stateReference = ref MemoryMarshal.GetReference(state);
+        ref byte sBoxReference = ref MemoryMarshal.GetReference(sBoxOutput);
+        ref byte permutationReference = ref MemoryMarshal.GetReference(permutationOutput);
         for (int round = CsaKeySchedule.BlockScheduleLength - 1; round >= 0; round--)
         {
             int sBoxInputOffset = (offset + 6) * blockCount;
+            byte roundKey = Unsafe.Add(ref blockScheduleReference, round);
             for (int blockIndex = 0; blockIndex < blockCount; blockIndex++)
             {
-                ushort transformed = transform[blockSchedule[round] ^ state[sBoxInputOffset + blockIndex]];
-                sBoxOutput[blockIndex] = (byte)(transformed >> 8);
-                permutationOutput[blockIndex] = (byte)transformed;
+                ushort transformed = Unsafe.Add(
+                    ref transformReference,
+                    roundKey ^ Unsafe.Add(ref stateReference, sBoxInputOffset + blockIndex));
+                Unsafe.Add(ref sBoxReference, blockIndex) = (byte)(transformed >> 8);
+                Unsafe.Add(ref permutationReference, blockIndex) = (byte)transformed;
             }
 
             offset--;
@@ -153,10 +161,6 @@ internal static class CsaBlockCipher
             int stateOffset6 = (offset + 6) * blockCount;
             int stateOffset8 = (offset + 8) * blockCount;
             int updateIndex = 0;
-            ref byte stateReference = ref MemoryMarshal.GetReference(state);
-            ref byte sBoxReference = ref MemoryMarshal.GetReference(sBoxOutput);
-            ref byte permutationReference = ref MemoryMarshal.GetReference(permutationOutput);
-
             for (; updateIndex <= blockCount - Vector128<byte>.Count; updateIndex += Vector128<byte>.Count)
             {
                 Vector128<byte> state0 = Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset8 + updateIndex))

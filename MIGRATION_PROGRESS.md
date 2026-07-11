@@ -392,3 +392,11 @@ Begin BitSlice foundation work:
   - prior 128-lane batch path: `1.605 us` per packet;
   - interleaved pipeline: `1.594 us` per packet.
 - The fixed-iteration harness measured `1609.6 ns` per packet including source-buffer copying. The modest BenchmarkDotNet improvement is retained because it also reduces stack working-set and removes a full intermediate-buffer pass.
+
+### Bounds-Check-Free Batch Block S-Box
+
+- Reworked the column-major block S-box lookup to use by-reference access to the scheduled key, transposed state, transform table, and temporary output columns. This removes repeated `Span` bounds checks and address reconstruction from the 128 independent table lookups performed in every block-cipher round while retaining the existing `Vector128<byte>` state updates.
+- Apple M4, .NET 10.0.8, Arm64 RyuJIT, 128-lane MediumRun, all with `0 B` managed allocation:
+  - isolated column-major block decipher: `40.67 ns` to `28.59 ns` per block;
+  - 128-packet copy-and-decrypt path: `1.594 us` to `1.320 us` per packet.
+- This is a 29.7% reduction for the block core and a 17.2% end-to-end improvement. The remaining next target is a width-specialized `Vector256`/`Vector512` backend for AVX2/AVX-512 hosts; Apple Silicon continues to use the 128-bit AdvSIMD backend.
