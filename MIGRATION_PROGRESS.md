@@ -869,3 +869,172 @@ Paired protocol `ffdecsa-compare-v1` (HEAD then candidate × 3 + 1 C; host noisy
 
 Keep. Isolated block signal is clean and multi-pair; e2e direction matches though absolute protocol numbers remain host-noise sensitive. Remaining gap to C is still dominated by the 128-lane stream boolean network and scalar block S-box table lookups.
 
+### Sliding live-state base for block rounds (liveslide) — discarded
+
+Uncommitted candidate on `DecipherBlocksColumnMajor128`: walk a `liveState` ref backward each round (FFdecsa-style `roff`) instead of recomputing `offset * ColumnStride` for S-box populate and unrolled Vector128 state updates.
+
+Correctness: 73 tests green; protocol checksum `76DC3CFC07B7D0F2`, 0 alloc.
+
+Isolated BDN `DecipherBlocksColumnMajor` ShortRun (3 pairs HEAD then candidate):
+
+- pair1: HEAD **22.52 ns** / CAND **21.81 ns** (-3.1%)
+- pair2: HEAD **22.28 ns** / CAND **21.90 ns** (-1.7%)
+- pair3: HEAD **22.13 ns** / CAND **23.90 ns** (+8.0%)
+- means: HEAD ≈ **22.31 ns**, CAND ≈ **22.54 ns**
+
+No reliable multi-pair block win (pair3 regresses hard; mean slightly worse). Protocol samples under the candidate were noise-level versus recent HEAD (~802–814 ns). Restored HEAD (`9eed197`). Keep the absolute-offset unrolled Vector128 updates without the sliding live base.
+
+### 4-step stream kernel fusion (StepQuad locals) — discarded
+
+Specialized `StepQuadInit` / `StepQuadNormal` running four boolean-network steps per call with x/y/z/d/e/f kept as outer `Vector128` locals across the quad (no per-step Span store-back). Wired into `TryGenerateBlocks` and `TryDecryptFullPayloads128` only.
+
+Correctness: 73 tests green.
+
+Isolated BDN `GenerateBitslicedStream` ShortRun pair 1:
+
+- HEAD **243.4 ns** / CAND **266.7 ns** (~+9.5%)
+
+Clear regression. Restored HEAD. Crossing the step boundary with a giant fused method hurts more than it saves on Arm64 RyuJIT.
+
+### 4-step call unroll (same Step ABI) — discarded
+
+Unrolled the `for (step = 0; step < 4; step++)` loops in `TryGenerateBlocks` / `TryDecryptFullPayloads128` into four straight-line `Step<>` calls without changing the Step body.
+
+Correctness: 73 tests green.
+
+Isolated BDN pair 1: HEAD **239.4 ns** / CAND **240.8 ns** (noise / slightly worse). Restored HEAD. Loop overhead around Step is not the bottleneck.
+
+### Full-lane StepFull128 with complement/AndNot shapes — discarded
+
+Added `StepFull128` for the 128-lane normal path (`TryDecryptFullPayloads128` + full-lane `TryGenerateBlocks`), folding all-ones `activeLanes` XORs into `~` / complement forms while keeping Span/`VectorWindow` ABI and HEAD evaluation order.
+
+Correctness: 73 tests green; protocol checksum `76DC3CFC07B7D0F2`, 0 alloc.
+
+Isolated BDN `GenerateBitslicedStream` ShortRun, 3 pairs:
+
+- pair1: HEAD **241.03 ns** / CAND **239.45 ns** (-0.66%)
+- pair2: HEAD **247.09 ns** / CAND **245.83 ns** (-0.51%)
+- pair3: HEAD **241.31 ns** / CAND **239.63 ns** (-0.70%)
+- means: HEAD ≈ **243.15 ns**, CAND ≈ **241.64 ns** (~-0.62% isolated)
+
+Paired protocol `ffdecsa-compare-v1` (3 pairs + 1 C):
+
+- pair1: HEAD **809.6 ns** / CAND **802.5 ns** (-0.88%)
+- pair2: HEAD **851.3 ns** / CAND **807.5 ns** (-5.14%) — HEAD sample is a noise outlier
+- pair3: HEAD **819.4 ns** / CAND **805.9 ns** (-1.65%)
+- means: HEAD ≈ **826.8 ns**, CAND ≈ **805.3 ns**
+- FFdecsa C: **536.3 ns**
+
+Directionally slightly faster but isolated gain is sub-1% and e2e is host-noise dominated (same class as prior monomorphic `activeLanes→NOT` discards). Restored HEAD. Do not revive more complement-only Step specializations without a clearer multi-pair isolated stream win.
+
+### Dual-step stream kernel with cached A/B window shift — discarded
+
+Added `StepDualNormal`: load the live 10×4 A/B window into locals once, run two boolean-network steps, and shift the cached locals between the halves instead of reloading from the virtual register window for the second step. Wired into `TryGenerateBlocks` / `TryDecryptFullPayloads128` normal loops (2 duals per byte).
+
+Correctness: 73 tests green.
+
+Isolated BDN `GenerateBitslicedStream` ShortRun pair 1:
+
+- HEAD **276.7 ns** (noisy absolute; still the unfused path)
+- CAND **441.3 ns** (~+60%)
+
+Clear regression. Restored HEAD. Keeping ~80 live plane locals across a dual-step blows Arm64 register pressure / spill cost far beyond any saved window reloads.
+
+### S-box A-plane preload CSE in Step — discarded
+
+Preloaded every A-window cell touched by the seven stream S-boxes into named locals once per `Step`, then reused those locals in the existing evaluation order (no dual-step, no ABI change).
+
+Correctness: 73 tests green.
+
+Isolated BDN `GenerateBitslicedStream` ShortRun pair 1:
+
+- HEAD **240.9 ns** / CAND **251.1 ns** (+4.2%)
+
+Regression on the first pair; stopped further pairs. Restored HEAD. Explicitly naming ~35 live A planes increases spill pressure without reducing the boolean-network work the JIT already schedules from `VectorWindow.Get`.
+
+### Stream-then-block reordering of monomorphic full-payload path — discarded
+
+Restructured `TryDecryptFullPayloads128` so all 22 stream blocks (Step + Decode128 into a 22,528 B buffer) run first, then the block-cipher/chaining loop consumes the precomputed stream words. Stream state is independent of the block cipher, so this is a pure schedule/layout change aimed at better I-cache / locality for each phase.
+
+Correctness: 73 tests green; protocol checksum `76DC3CFC07B7D0F2`, 0 alloc.
+
+Paired protocol `ffdecsa-compare-v1` (3 pairs HEAD then candidate):
+
+- pair1: HEAD **814.5 ns** / CAND **893.1 ns** (+9.6%)
+- pair2: HEAD **809.2 ns** / CAND **812.1 ns** (+0.4%)
+- pair3: HEAD **805.6 ns** / CAND **801.7 ns** (-0.5%)
+- means: HEAD ≈ **809.8 ns**, CAND ≈ **835.6 ns**
+
+No keep-grade win (pair1 regresses hard; mean worse). The interleaved stream/block schedule remains hotter than phase-separated buffers on this host. Restored HEAD.
+
+### Skip final AdvanceRegisterWindow after last stream block — discarded
+
+Avoided the last per-block `AdvanceRegisterWindow` (640 B × 2 `CopyBlock`) in `TryGenerateBlocks` / `TryDecryptFullPayloads` / `TryDecryptFullPayloads128` when no further stream steps remain.
+
+Correctness: 73 tests green; protocol checksum `76DC3CFC07B7D0F2`, 0 alloc.
+
+Paired protocol (3 pairs):
+
+- pair1: HEAD **803.6 ns** / CAND **827.5 ns** (+3.0%)
+- pair2: HEAD **801.9 ns** / CAND **795.0 ns** (-0.9%)
+- pair3: HEAD **821.3 ns** / CAND **824.3 ns** (+0.4%)
+- means: HEAD ≈ **808.9 ns**, CAND ≈ **815.6 ns** (+0.8%)
+
+No keep-grade win (one dead copy per packet is noise-level vs host variation). Restored HEAD.
+
+### Block-before-stream iteration order (FFdecsa schedule) — discarded
+
+Reordered the monomorphic full-payload loop to match FFdecsa's `decrypt_packets` iteration: `DecipherBlocksColumnMajor` on the current chaining/IB first, then 32 stream `Step`s + `Decode128`, then chaining/payload XOR. Block and stream are independent given the current chaining and stream registers.
+
+Correctness: 73 tests green; protocol checksum `76DC3CFC07B7D0F2`, 0 alloc.
+
+Paired protocol (3 pairs):
+
+- pair1: HEAD **853.4 ns** / CAND **860.2 ns** (+0.8%)
+- pair2: HEAD **811.3 ns** / CAND **832.4 ns** (+2.6%)
+- pair3: HEAD **811.2 ns** / CAND **796.4 ns** (-1.8%)
+- means: HEAD ≈ **825.3 ns**, CAND ≈ **829.7 ns** (+0.5%)
+
+No keep-grade win. Restored HEAD. The existing stream-then-block interleave remains competitive with C's block-then-stream schedule on this managed path.
+
+### Extract stream S-boxes into EvaluateStreamSboxes helper — discarded
+
+Moved the seven fused stream S-box boolean networks out of `Step` into an `AggressiveInlining` `EvaluateStreamSboxes` helper (same evaluation order / `VectorWindow` loads) to test whether a tighter post-feedback live-range boundary helps Arm64 RyuJIT.
+
+Correctness: 73 tests green.
+
+Isolated BDN `GenerateBitslicedStream` ShortRun pairs:
+
+- pair1: HEAD **244.3 ns** / CAND **243.0 ns** (-0.55%)
+- pair2: HEAD **244.4 ns** / CAND **257.6 ns** (+5.4%)
+
+No reliable multi-pair win (pair2 regresses). Restored HEAD. Packaging the S-box block as a separate method does not beat the fully fused `Step` body.
+
+## Stream kernel rework session summary (2026-07-12)
+
+Attempted structural rewrites focused on the 128-lane stream boolean network / register window after HEAD `9eed197`:
+
+Discarded (no keep-grade multi-pair win):
+
+1. Block liveslide virtual base (`liveState` roff) on unrolled Vector128 updates
+2. 4-step fused `StepQuad` with outer x/y/z/d/e/f locals
+3. 4-step straight-line call unroll
+4. Full-lane `StepFull128` complement/`~` shapes
+5. Dual-step cached A/B window shift (`StepDualNormal`)
+6. S-box A-plane preload CSE
+7. Stream-then-block full-payload reordering (all stream blocks first)
+8. Skip final `AdvanceRegisterWindow`
+9. Block-before-stream FFdecsa iteration order
+10. `EvaluateStreamSboxes` helper extraction
+
+Interpretation:
+
+- RyuJIT already lowers the current fused `Step` + 32-step virtual register window well.
+- Remaining C gap (~1.5×; managed often ~800–830 ns vs C ~530–550 ns on this host) is still dominated by raw 128-lane boolean-network arithmetic (7 S-boxes × 32 steps × 23 blocks) and scalar block S-box table lookups, not Step ABI / loop packaging / register-window bookkeeping.
+- Further packaging-only stream rewrites are exhausted for this phase. Next real avenues need either:
+  - a lower-op boolean network (new synthesis, not just `activeLanes→NOT`),
+  - a different plane/register representation that cuts memory traffic without exploding live ranges,
+  - or ISA/backend help beyond pure managed AdvSIMD `Vector128<ulong>` (out of current pure-managed scoreboard scope unless measured free).
+
+Current HEAD remains `9eed197`. Working tree code restored; this section records the discarded experiments.
+
