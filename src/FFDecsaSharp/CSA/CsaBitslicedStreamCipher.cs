@@ -1,5 +1,6 @@
 using FFDecsaSharp.BitSlice;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace FFDecsaSharp.CSA;
 
@@ -306,13 +307,15 @@ internal static class CsaBitslicedStreamCipher
         };
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong Get(ReadOnlySpan<ulong> values, int nibble, int bit)
     {
-        return values[(nibble * NibbleWidth) + bit];
+        return Unsafe.Add(ref MemoryMarshal.GetReference(values), (nibble * NibbleWidth) + bit);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void Set(Span<ulong> values, int nibble, int bit, ulong value)
     {
-        values[(nibble * NibbleWidth) + bit] = value;
+        Unsafe.Add(ref MemoryMarshal.GetReference(values), (nibble * NibbleWidth) + bit) = value;
     }
 }
