@@ -429,3 +429,9 @@ Begin BitSlice foundation work:
   - isolated column-major block decipher: `28.59 ns` to `25.75 ns` per block;
   - 128-packet copy-and-decrypt path: `1.271 us` to `1.216 us` per packet.
 - The normalized serial `ffdecsa-compare-v1` run measured C# at `1241.728 ns` per packet (`805,329.232` packets per second), versus FFdecsa C at `497.894 ns` per packet (`2,008,458.539` packets per second), with matching checksum `76DC3CFC07B7D0F2`. The managed implementation now reaches 40.1% of the reference throughput.
+
+### Cross-Width Block State Updates
+
+- Extended the column-major block-state XOR update with runtime-selected `Vector512<byte>`, `Vector256<byte>`, and `Vector128<byte>` paths. AVX-512 and AVX2 hosts can now update 64 or 32 packet columns per vector operation while Arm64 AdvSIMD continues to use the 16-byte path.
+- Apple M4 verification confirms the unavailable wider paths are eliminated without a measurable regression: 128-lane column-major block decipher measured `25.777 ns` per block versus the prior `25.755 ns` baseline.
+- The wider paths require the same `ffdecsa-compare-v1` measurement on AVX2 and AVX-512 hardware before reporting cross-platform throughput gains.

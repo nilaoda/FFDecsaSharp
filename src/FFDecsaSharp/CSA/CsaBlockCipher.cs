@@ -174,6 +174,44 @@ internal static class CsaBlockCipher
             int stateOffset6 = (offset + 6) * blockCount;
             int stateOffset8 = (offset + 8) * blockCount;
             int updateIndex = 0;
+            if (Vector512.IsHardwareAccelerated)
+            {
+                for (; updateIndex <= blockCount - Vector512<byte>.Count; updateIndex += Vector512<byte>.Count)
+                {
+                    Vector512<byte> state0 = Unsafe.ReadUnaligned<Vector512<byte>>(ref Unsafe.Add(ref stateReference, stateOffset8 + updateIndex))
+                        ^ Unsafe.ReadUnaligned<Vector512<byte>>(ref Unsafe.Add(ref sBoxReference, updateIndex));
+                    Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset + updateIndex), state0);
+                    Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset6 + updateIndex),
+                        Unsafe.ReadUnaligned<Vector512<byte>>(ref Unsafe.Add(ref stateReference, stateOffset6 + updateIndex))
+                        ^ Unsafe.ReadUnaligned<Vector512<byte>>(ref Unsafe.Add(ref permutationReference, updateIndex)));
+                    Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset4 + updateIndex),
+                        Unsafe.ReadUnaligned<Vector512<byte>>(ref Unsafe.Add(ref stateReference, stateOffset4 + updateIndex)) ^ state0);
+                    Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset3 + updateIndex),
+                        Unsafe.ReadUnaligned<Vector512<byte>>(ref Unsafe.Add(ref stateReference, stateOffset3 + updateIndex)) ^ state0);
+                    Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset2 + updateIndex),
+                        Unsafe.ReadUnaligned<Vector512<byte>>(ref Unsafe.Add(ref stateReference, stateOffset2 + updateIndex)) ^ state0);
+                }
+            }
+
+            if (Vector256.IsHardwareAccelerated)
+            {
+                for (; updateIndex <= blockCount - Vector256<byte>.Count; updateIndex += Vector256<byte>.Count)
+                {
+                    Vector256<byte> state0 = Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref stateReference, stateOffset8 + updateIndex))
+                        ^ Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref sBoxReference, updateIndex));
+                    Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset + updateIndex), state0);
+                    Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset6 + updateIndex),
+                        Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref stateReference, stateOffset6 + updateIndex))
+                        ^ Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref permutationReference, updateIndex)));
+                    Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset4 + updateIndex),
+                        Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref stateReference, stateOffset4 + updateIndex)) ^ state0);
+                    Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset3 + updateIndex),
+                        Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref stateReference, stateOffset3 + updateIndex)) ^ state0);
+                    Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset2 + updateIndex),
+                        Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref stateReference, stateOffset2 + updateIndex)) ^ state0);
+                }
+            }
+
             for (; updateIndex <= blockCount - Vector128<byte>.Count; updateIndex += Vector128<byte>.Count)
             {
                 Vector128<byte> state0 = Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset8 + updateIndex))
