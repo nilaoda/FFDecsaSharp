@@ -326,3 +326,8 @@ Begin BitSlice foundation work:
   - 64 alternating-key full-payload packets: `3.955 us` per packet.
 - `dotnet build src/FFDecsaSharp.slnx --no-restore -m:1` completed with 0 warnings and 0 errors.
 - `dotnet test src/FFDecsaSharp.slnx --no-build` passed 63 tests.
+
+### Project Entry Documentation
+
+- Added `README.md` with current implementation scope, minimal single-packet and batch API examples, local build/test commands, benchmark invocation, and repository layout.
+- Documented that the library currently supports decryption only and that the GUI assembly remains reserved for future work.
