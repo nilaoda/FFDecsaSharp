@@ -770,3 +770,29 @@ Isolated BDN `GenerateBitslicedStream` ShortRun, 3 paired runs (Apple M4, .NET 1
 
 No reliable multi-pair win (pair1 regresses; overall mean slightly worse). Discarded after isolation. Same locality lesson as full-run history: larger virtual-register banks hurt more than fewer mid-run copies save. Keep the 32-step window + per-block `CopyBlock`.
 
+### Monomorphic 128-lane full-payload path (kept)
+
+Specialized the protocol hot path with `TryDecryptFullPayloads128`:
+
+- `TryDecryptFullPayloads` routes `packetCount == 128` into the monomorphic method.
+- `const int packetCount = MaxLaneCount` for fixed stack sizes and loop bounds.
+- `activeLanes = Vector128.Create(ulong.MaxValue, ulong.MaxValue)` (no mask helper).
+- Always call `BitSliceBlock.Decode128` (no partial-lane decode branch).
+- Partial-width batches keep the original flexible path.
+
+Correctness:
+
+- `dotnet test src/FFDecsaSharp.slnx -c Release -m:1` — 73 passed.
+- Protocol checksum `76DC3CFC07B7D0F2`, `managed_allocated_bytes=0`, `verified=true`.
+
+Measurement (Apple M4, .NET 10.0.8), paired protocol `ffdecsa-compare-v1` (HEAD then candidate × 3 + 1 C):
+
+- pair1: HEAD **824.2 ns** / CAND **811.1 ns** (−1.6%)
+- pair2: HEAD **827.6 ns** / CAND **813.1 ns** (−1.8%)
+- pair3: HEAD **838.2 ns** / CAND **815.7 ns** (−2.7%)
+- means: HEAD ≈ **830.0 ns**, CAND ≈ **813.3 ns** (~2.0% e2e)
+- FFdecsa C: **538.9 ns**
+- Managed share of C ≈ **66%** in this window (best candidate sample ≈ **811 ns**).
+
+Keep. This is a structural monomorphization win on the full interleaved path rather than another Step boolean-network packaging rewrite. Remaining gap is still dominated by raw 128-lane stream boolean ops and scalar block S-box work.
+
