@@ -149,6 +149,44 @@ public sealed class DecryptorTests
         Assert.Equal(0xD0, packet[3]);
     }
 
+    [Fact]
+    public void TryDecryptPacketsMatchesScalarDecryptionForFullPayloadRuns()
+    {
+        ReadOnlySpan<byte> even = [0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x00];
+        ReadOnlySpan<byte> odd = [0x0F, 0x1E, 0x2D, 0x3C, 0x4B, 0x5A, 0x69, 0x78];
+        Span<byte> expected = stackalloc byte[188 * 3];
+        Span<byte> actual = stackalloc byte[188 * 3];
+        Span<PacketDecryptionResult> results = stackalloc PacketDecryptionResult[3];
+
+        for (int packetIndex = 0; packetIndex < 3; packetIndex++)
+        {
+            Span<byte> expectedPacket = expected.Slice(packetIndex * 188, 188);
+            expectedPacket[0] = 0x47;
+            expectedPacket[3] = 0x90;
+            for (int payloadIndex = 0; payloadIndex < 184; payloadIndex++)
+            {
+                expectedPacket[payloadIndex + 4] = (byte)payloadIndex;
+            }
+        }
+
+        expected.CopyTo(actual);
+        Assert.True(ControlWords.TryCreate(even, odd, out ControlWords controlWords));
+        Assert.True(Decryptor.TryCreate(controlWords, out Decryptor? decryptor));
+
+        for (int packetIndex = 0; packetIndex < 3; packetIndex++)
+        {
+            Assert.Equal(PacketDecryptionResult.Decrypted, decryptor!.Decrypt(expected.Slice(packetIndex * 188, 188)));
+        }
+
+        Assert.True(decryptor!.TryDecryptPackets(actual, results));
+
+        Assert.True(actual.SequenceEqual(expected));
+        for (int packetIndex = 0; packetIndex < results.Length; packetIndex++)
+        {
+            Assert.Equal(PacketDecryptionResult.Decrypted, results[packetIndex]);
+        }
+    }
+
     [Theory]
     [InlineData(0x00, PacketDecryptionResult.Clear)]
     [InlineData(0x40, PacketDecryptionResult.ReservedScramblingControl)]

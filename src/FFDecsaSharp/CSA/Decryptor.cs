@@ -73,7 +73,42 @@ public sealed class Decryptor
 
         for (int packetIndex = 0; packetIndex < packetCount; packetIndex++)
         {
-            results[packetIndex] = Decrypt(packets.Slice(packetIndex * TransportPacket.Size, TransportPacket.Size));
+            Span<byte> packet = packets.Slice(packetIndex * TransportPacket.Size, TransportPacket.Size);
+            if (TryGetFullPayloadKeyKind(packet, out CsaKeyKind keyKind))
+            {
+                int runLength = 1;
+                while (runLength < BitSlice.BitSliceBlock.MaxLaneCount
+                    && packetIndex + runLength < packetCount
+                    && TryGetFullPayloadKeyKind(packets.Slice((packetIndex + runLength) * TransportPacket.Size, TransportPacket.Size), out CsaKeyKind nextKeyKind)
+                    && nextKeyKind == keyKind)
+                {
+                    runLength++;
+                }
+
+                if (runLength >= 2)
+                {
+                    for (int runIndex = 0; runIndex < runLength; runIndex++)
+                    {
+                        Span<byte> runPacket = packets.Slice((packetIndex + runIndex) * TransportPacket.Size, TransportPacket.Size);
+                        _ = CsaPacketPlanner.Prepare(runPacket, out _);
+                        results[packetIndex + runIndex] = PacketDecryptionResult.Decrypted;
+                    }
+
+                    ScheduledControlWord controlWord = _scheduledControlWords.Get(keyKind);
+                    if (!CsaBitslicedPacketCipher.TryDecryptFullPayloads(
+                        controlWord,
+                        packets.Slice(packetIndex * TransportPacket.Size, runLength * TransportPacket.Size),
+                        runLength))
+                    {
+                        return false;
+                    }
+
+                    packetIndex += runLength - 1;
+                    continue;
+                }
+            }
+
+            results[packetIndex] = Decrypt(packet);
         }
 
         return true;
@@ -90,5 +125,31 @@ public sealed class Decryptor
             CsaPacketPlanningResult.PayloadTooSmall => PacketDecryptionResult.PayloadTooSmall,
             _ => PacketDecryptionResult.InvalidPacket,
         };
+    }
+
+    private static bool TryGetFullPayloadKeyKind(ReadOnlySpan<byte> packet, out CsaKeyKind keyKind)
+    {
+        keyKind = default;
+
+        if (!TransportPacket.TryGetScramblingControl(packet, out TransportScramblingControl scramblingControl)
+            || !TransportPacket.TryGetPayloadOffset(packet, out int payloadOffset)
+            || payloadOffset != 4)
+        {
+            return false;
+        }
+
+        switch (scramblingControl)
+        {
+            case TransportScramblingControl.ScrambledWithEvenKey:
+                keyKind = CsaKeyKind.Even;
+                return true;
+
+            case TransportScramblingControl.ScrambledWithOddKey:
+                keyKind = CsaKeyKind.Odd;
+                return true;
+
+            default:
+                return false;
+        }
     }
 }

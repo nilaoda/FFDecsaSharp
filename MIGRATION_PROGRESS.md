@@ -228,3 +228,18 @@ Begin BitSlice foundation work:
 - `dotnet test src/FFDecsaSharp.slnx`
   - Passed: 55
   - Failed: 0
+
+### Bitsliced Stream Acceleration
+
+- Added a 64-lane `ulong` bit-sliced stream cipher with FFdecsa's original S-box boolean networks.
+- Verified its one-lane output against FFdecsa and compared 64 independent lanes against the scalar stream implementation.
+- Integrated it into `TryDecryptPackets` for contiguous runs of two to 64 full-payload packets using the same control word.
+- Full packets with adaptation fields, residue bytes, mixed keys, or isolated packets retain the scalar path.
+- The block cipher remains scalar; only the stream phase is bit-sliced in this stage.
+- Short benchmark on Apple M4, .NET 10.0.8, Arm64 RyuJIT:
+  - Single packet: `15.18 us` per packet, `0 B` allocation.
+  - 32 full-packet batch: `8.45 us` per packet, `0 B` allocation.
+  - 64-lane stream generation for 23 output blocks: `1.40 us` per lane, `0 B` allocation.
+- `dotnet test src/FFDecsaSharp.slnx`
+  - Passed: 59
+  - Failed: 0

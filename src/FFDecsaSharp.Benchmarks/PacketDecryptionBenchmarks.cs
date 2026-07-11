@@ -16,6 +16,10 @@ public class PacketDecryptionBenchmarks
     private readonly byte[] _packetBatch = new byte[188 * BatchSize];
     private readonly byte[] _sourceBatch = new byte[188 * BatchSize];
     private readonly PacketDecryptionResult[] _batchResults = new PacketDecryptionResult[BatchSize];
+    private readonly byte[] _streamA = new byte[CsaKeySchedule.StreamNibbleCount];
+    private readonly byte[] _streamB = new byte[CsaKeySchedule.StreamNibbleCount];
+    private readonly byte[] _bitslicedInitializationBlocks = new byte[CsaStreamCipher.BlockSize * BitSlice.BitSliceBlock.MaxLaneCount];
+    private readonly byte[] _bitslicedOutput = new byte[CsaStreamCipher.BlockSize * 23 * BitSlice.BitSliceBlock.MaxLaneCount];
     private readonly Decryptor _decryptor;
 
     /// <summary>
@@ -39,6 +43,10 @@ public class PacketDecryptionBenchmarks
         {
             _source.CopyTo(_sourceBatch, packetIndex * _source.Length);
         }
+        for (int lane = 0; lane < BitSlice.BitSliceBlock.MaxLaneCount; lane++)
+        {
+            _source.AsSpan(4, CsaStreamCipher.BlockSize).CopyTo(_bitslicedInitializationBlocks.AsSpan(lane * CsaStreamCipher.BlockSize));
+        }
 
         if (!ControlWords.TryCreate(even, odd, out ControlWords controlWords)
             || !Decryptor.TryCreate(controlWords, out Decryptor? decryptor))
@@ -47,6 +55,10 @@ public class PacketDecryptionBenchmarks
         }
 
         _decryptor = decryptor!;
+        if (!CsaKeySchedule.TryCreateStreamNibbles(odd, _streamA, _streamB))
+        {
+            throw new InvalidOperationException("Failed to create the benchmark stream schedule.");
+        }
     }
 
     /// <summary>
@@ -69,5 +81,21 @@ public class PacketDecryptionBenchmarks
     {
         _sourceBatch.CopyTo(_packetBatch, 0);
         return _decryptor.TryDecryptPackets(_packetBatch, _batchResults);
+    }
+
+    /// <summary>
+    /// Generates 23 stream blocks for 64 independent lanes with the bit-sliced stream kernel.
+    /// </summary>
+    /// <returns><see langword="true"/> when the output buffer was populated.</returns>
+    [Benchmark(OperationsPerInvoke = BitSlice.BitSliceBlock.MaxLaneCount)]
+    public bool GenerateBitslicedStream()
+    {
+        return CsaBitslicedStreamCipher.TryGenerateBlocks(
+            _streamA,
+            _streamB,
+            _bitslicedInitializationBlocks,
+            BitSlice.BitSliceBlock.MaxLaneCount,
+            23,
+            _bitslicedOutput);
     }
 }
