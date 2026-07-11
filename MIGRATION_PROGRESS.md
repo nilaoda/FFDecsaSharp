@@ -569,3 +569,39 @@ Precomputed full-lane all-ones/zero `Vector128` stream nibble planes on `Schedul
 ### Optimized scalar TryEncode (discarded)
 
 Unrolled per-byte bit tests and precomputed lane masks for `TryEncode`. Correctness passed; protocol pairs were noise-dominated with no keep-grade gain (encode is once per batch). Discarded.
+
+### Stream kernel body rewrite (Step boolean network / register window) — discarded
+
+Revisited the 128-lane `Step` boolean network and virtual-register window after Phase 1/4 and the earlier packaging discards. Goal: structural stream-kernel work, not ABI packaging.
+
+Prototypes measured against HEAD with isolated BDN `GenerateBitslicedStream` (short job) and/or paired A/B runs on Apple M4:
+
+1. **Full-local auxiliary state + FFdecsa S-box-first order + explicit `StepNormal`/`StepInit`**
+   - Hoisted x/y/z/d/e/f into 24 outer `Vector128` locals, removed CreateSpan, evaluated S-boxes into temps before feedback, committed X/Y/Z/p/q at step end (FFdecsa order).
+   - Correctness: 73 tests green.
+   - Isolated stream BDN: **~670 ns**/packet vs HEAD CopyBlock baseline **~568–577 ns**. Clear regression. Discarded.
+
+2. **S-box-first reorder only (kept Span x/y/z/d/e/f ABI)**
+   - Same FFdecsa evaluation order with temps; sliding plane cursor; inlined F/E adder.
+   - Correctness OK.
+   - Isolated stream BDN: **~602 ns**. Still slower than HEAD. Discarded.
+
+3. **Sliding plane cursor + inlined F/E + original S-box write order**
+   - Replaced `VectorWindow`/`Get` with `Unsafe.Add` plane bases; wrote next A/B via `Unsafe.Subtract(window, 4)`.
+   - Correctness OK.
+   - Isolated stream BDN: **~632 ns**. Discarded.
+
+4. **Minimal indirection removal (final candidate)**
+   - Only replaced `VectorWindow`/`Get` with direct `Unsafe.Add`, inlined `UpdateFAndE`, wrote next A/B via plane refs. **Same evaluation order as HEAD.**
+   - Correctness: 73 tests green.
+   - Paired short-job BDN (3 pairs, HEAD then candidate):
+     - HEAD: 560.7 / 570.2 / 571.9 ns (mean ≈ **567.6 ns**)
+     - Candidate: 570.4 / 566.2 / 571.4 ns (mean ≈ **569.3 ns**)
+   - No reliable isolated stream win (within noise / slightly worse). Discarded.
+
+Interpretation:
+
+- RyuJIT already lowers the current Span + `VectorWindow` form well on Arm64 AdvSIMD. Extra live locals, S-box reordering into more temps, or more aggressive plane-cursor packaging either regresses or stays inside noise.
+- The remaining gap to FFdecsa C is still the raw boolean-network op count (7 S-boxes × 32 steps × 23 blocks) plus block S-box work, not the small C# addressing wrappers around `Step`.
+- Do not revive S-box-first / full-local Step rewrites without a quieter multi-pair isolated stream BDN win **and** protocol e2e gain. Prefer new structural ideas (layout/algorithm), not more Step packaging.
+
