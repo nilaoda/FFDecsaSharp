@@ -71,6 +71,30 @@ public sealed class DecryptorTests
         Assert.True(packet[4..].SequenceEqual(expectedPayload));
     }
 
+    [Fact]
+    public void DecryptsReferencePacketWithResidueBytes()
+    {
+        ReadOnlySpan<byte> even = [0x2D, 0x11, 0x5F, 0x9D, 0x29, 0xBF, 0x7F, 0x67];
+        ReadOnlySpan<byte> odd = [0x0F, 0x1E, 0x2D, 0x3C, 0x4B, 0x5A, 0x69, 0x78];
+        ReadOnlySpan<byte> encryptedPayload = [0xC0, 0x5E, 0xFB, 0xC8, 0x4A, 0x63, 0xE3, 0x3C, 0x11, 0xD9, 0xE0, 0x75, 0x8E, 0xF2];
+        ReadOnlySpan<byte> expectedPayload = [0x5A, 0x2C, 0xEE, 0xB3, 0xDE, 0x92, 0xE7, 0xA6, 0x6C, 0xAA, 0x99, 0x84, 0xE4, 0x00];
+        Span<byte> packet = stackalloc byte[188];
+        packet[0] = 0x47;
+        packet[1] = 0x00;
+        packet[2] = 0x7A;
+        packet[3] = 0xB7;
+        packet[4] = 169;
+        packet.Slice(5, 169).Fill(0xFF);
+        encryptedPayload.CopyTo(packet[174..]);
+
+        Assert.True(ControlWords.TryCreate(even, odd, out ControlWords controlWords));
+        Assert.True(Decryptor.TryCreate(controlWords, out Decryptor? decryptor));
+
+        Assert.Equal(PacketDecryptionResult.Decrypted, decryptor!.Decrypt(packet));
+        Assert.Equal(0x37, packet[3]);
+        Assert.True(packet[174..].SequenceEqual(expectedPayload));
+    }
+
     [Theory]
     [InlineData(0x00, PacketDecryptionResult.Clear)]
     [InlineData(0x40, PacketDecryptionResult.ReservedScramblingControl)]

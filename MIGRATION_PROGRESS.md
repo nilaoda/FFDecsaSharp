@@ -208,5 +208,10 @@ Begin BitSlice foundation work:
 - Added the complete 184-byte FFdecsa `test_2` reference packet as an end-to-end `Decryptor` regression test.
 - The scalar implementation now verifies all 23 chained CSA blocks against the reference plaintext, including TS scrambling-control clearing.
 - `dotnet test src/FFDecsaSharp.slnx`
-  - Passed: 52
+  - Passed: 53
   - Failed: 0
+
+### Residue Compatibility Coverage
+
+- Added the FFdecsa `test_p_1_6` reference vector for one full CSA block plus six residue bytes behind an adaptation field.
+- Confirmed residue bytes are decrypted with the next stream output and the packet scrambling-control bits are cleared.
