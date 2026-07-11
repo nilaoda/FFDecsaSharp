@@ -1,3 +1,6 @@
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+
 namespace FFDecsaSharp.CSA;
 
 internal static class CsaBitslicedPacketCipher
@@ -58,11 +61,16 @@ internal static class CsaBitslicedPacketCipher
                 Span<byte> payload = packets.Slice((packetIndexes[lane] * TransportStream.TransportPacket.Size) + 4, PayloadLength);
                 ReadOnlySpan<byte> streamOutput = streamBlocks.Slice(((blockIndex * packetCount) + lane) * CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize);
 
-                for (int byteIndex = 0; byteIndex < CsaStreamCipher.BlockSize; byteIndex++)
-                {
-                    chainingValue[byteIndex] = (byte)(streamOutput[byteIndex] ^ payload[nextOffset + byteIndex]);
-                    payload[currentOffset + byteIndex] = (byte)(decipheredBlock[byteIndex] ^ chainingValue[byteIndex]);
-                }
+                ref byte chainingReference = ref MemoryMarshal.GetReference(chainingValue);
+                ref byte streamReference = ref MemoryMarshal.GetReference(streamOutput);
+                ref byte decipheredReference = ref MemoryMarshal.GetReference(decipheredBlock);
+                ref byte payloadReference = ref MemoryMarshal.GetReference(payload);
+                ulong chainingValueBits = Unsafe.ReadUnaligned<ulong>(ref streamReference)
+                    ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref payloadReference, nextOffset));
+                Unsafe.WriteUnaligned(ref chainingReference, chainingValueBits);
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref payloadReference, currentOffset),
+                    Unsafe.ReadUnaligned<ulong>(ref decipheredReference) ^ chainingValueBits);
             }
         }
 
