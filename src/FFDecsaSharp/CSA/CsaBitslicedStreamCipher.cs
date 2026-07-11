@@ -277,20 +277,102 @@ internal static class CsaBitslicedStreamCipher
         bool includeInput,
         Vector128<ulong> activeLanes)
     {
-        EvaluateSBoxes(a, registerOffset, activeLanes, out Vector128<ulong> s1a, out Vector128<ulong> s1b, out Vector128<ulong> s2a, out Vector128<ulong> s2b, out Vector128<ulong> s3a, out Vector128<ulong> s3b, out Vector128<ulong> s4a, out Vector128<ulong> s4b, out Vector128<ulong> s5a, out Vector128<ulong> s5b, out Vector128<ulong> s6a, out Vector128<ulong> s6b, out Vector128<ulong> s7a, out Vector128<ulong> s7b);
+        Span<Vector128<ulong>> aWindow = a.Slice(registerOffset * NibbleWidth);
+        Span<Vector128<ulong>> bWindow = b.Slice(registerOffset * NibbleWidth);
+        Vector128<ulong> fe = Get(aWindow, 3, 0);
+        Vector128<ulong> fa = Get(aWindow, 0, 2);
+        Vector128<ulong> fb = Get(aWindow, 5, 1);
+        Vector128<ulong> fc = Get(aWindow, 6, 3);
+        Vector128<ulong> fd = Get(aWindow, 8, 0);
+        Vector128<ulong> tmp0 = fa ^ (fb ^ ((((fa | fb) ^ fc) | (fc ^ fd)) ^ activeLanes));
+        Vector128<ulong> tmp1 = (fa | fb) ^ ((fc & (fa | (fb ^ fd))) ^ activeLanes);
+        Vector128<ulong> tmp2 = fa ^ ((fb & fd) ^ ((fa & fd) | fc));
+        Vector128<ulong> tmp3 = (fa & fc) ^ (fa ^ ((fa & fb) | fd));
+        Vector128<ulong> s1a = tmp0 ^ (fe & tmp1);
+        Vector128<ulong> s1b = tmp2 ^ (fe & tmp3);
 
-        Vector128<ulong> extraB0 = Get(b, registerOffset, 8, 2) ^ Get(b, registerOffset, 5, 3) ^ Get(b, registerOffset, 2, 1) ^ Get(b, registerOffset, 7, 0);
-        Vector128<ulong> extraB1 = Get(b, registerOffset, 4, 3) ^ Get(b, registerOffset, 7, 2) ^ Get(b, registerOffset, 3, 0) ^ Get(b, registerOffset, 4, 1);
-        Vector128<ulong> extraB2 = Get(b, registerOffset, 5, 0) ^ Get(b, registerOffset, 7, 1) ^ Get(b, registerOffset, 2, 3) ^ Get(b, registerOffset, 3, 2);
-        Vector128<ulong> extraB3 = Get(b, registerOffset, 2, 0) ^ Get(b, registerOffset, 5, 1) ^ Get(b, registerOffset, 6, 2) ^ Get(b, registerOffset, 8, 3);
-        Vector128<ulong> nextA0 = Get(a, registerOffset, 9, 0) ^ x[0];
-        Vector128<ulong> nextA1 = Get(a, registerOffset, 9, 1) ^ x[1];
-        Vector128<ulong> nextA2 = Get(a, registerOffset, 9, 2) ^ x[2];
-        Vector128<ulong> nextA3 = Get(a, registerOffset, 9, 3) ^ x[3];
-        Vector128<ulong> nextB0 = Get(b, registerOffset, 6, 0) ^ Get(b, registerOffset, 9, 0) ^ y[0];
-        Vector128<ulong> nextB1 = Get(b, registerOffset, 6, 1) ^ Get(b, registerOffset, 9, 1) ^ y[1];
-        Vector128<ulong> nextB2 = Get(b, registerOffset, 6, 2) ^ Get(b, registerOffset, 9, 2) ^ y[2];
-        Vector128<ulong> nextB3 = Get(b, registerOffset, 6, 3) ^ Get(b, registerOffset, 9, 3) ^ y[3];
+        fe = Get(aWindow, 1, 1);
+        fa = Get(aWindow, 2, 2);
+        fb = Get(aWindow, 5, 3);
+        fc = Get(aWindow, 6, 0);
+        fd = Get(aWindow, 8, 1);
+        tmp0 = fa ^ ((fb & (fc | fd)) ^ (fc ^ (fd ^ activeLanes)));
+        tmp1 = (fa & (fb ^ fd)) | ((fa | fb) & fc);
+        tmp2 = (fb & fd) ^ ((fa & fd) | (fb ^ (fc ^ activeLanes)));
+        tmp3 = (fa & fd) | (fa ^ (fb ^ (fc & fd)));
+        Vector128<ulong> s2a = tmp0 ^ (fe & tmp1);
+        Vector128<ulong> s2b = tmp2 ^ (fe & tmp3);
+
+        fe = Get(aWindow, 0, 3);
+        fa = Get(aWindow, 1, 0);
+        fb = Get(aWindow, 4, 1);
+        fc = Get(aWindow, 4, 3);
+        fd = Get(aWindow, 5, 2);
+        tmp0 = fa ^ (fb ^ ((fc & (fa | fd)) ^ fd));
+        tmp1 = (fa & fc) ^ ((fa ^ fd) | ((fb | fc) ^ (fd ^ activeLanes)));
+        tmp2 = fa ^ (((fb ^ fc) & fd) ^ fc);
+        Vector128<ulong> s3a = tmp0 ^ ((fe ^ activeLanes) & tmp1);
+        Vector128<ulong> s3b = tmp2 ^ fe;
+
+        fe = Get(aWindow, 2, 3);
+        fa = Get(aWindow, 0, 1);
+        fb = Get(aWindow, 1, 3);
+        fc = Get(aWindow, 3, 2);
+        fd = Get(aWindow, 7, 0);
+        tmp0 = fa ^ ((fc & (fa ^ fd)) | (fb ^ (fc | (fd ^ activeLanes))));
+        tmp1 = (fa & fb) ^ (fb ^ (((fa | fc) & fd) ^ fc));
+        tmp2 = fa ^ ((fb & fc) | (((fa & (fb ^ fd)) | fc) ^ fd));
+        Vector128<ulong> s4a = tmp0 ^ (fe & (tmp1 ^ tmp0));
+        Vector128<ulong> s4b = (s4a ^ tmp2) ^ fe;
+
+        fe = Get(aWindow, 4, 2);
+        fa = Get(aWindow, 3, 3);
+        fb = Get(aWindow, 5, 0);
+        fc = Get(aWindow, 7, 1);
+        fd = Get(aWindow, 8, 2);
+        tmp0 = ((fa & (fb | fc)) ^ fb) | (((fa ^ fc) | fd) ^ activeLanes);
+        tmp1 = fb ^ ((fc ^ fd) & (fc ^ (fb | (fa ^ fd))));
+        tmp2 = (fa & fc) ^ (fb ^ ((fb | (fa ^ fc)) & fd));
+        tmp3 = ((fa ^ fb) & (fc ^ activeLanes)) | fd;
+        Vector128<ulong> s5a = tmp0 ^ (fe & tmp1);
+        Vector128<ulong> s5b = tmp2 ^ (fe & tmp3);
+
+        fe = Get(aWindow, 2, 1);
+        fa = Get(aWindow, 3, 1);
+        fb = Get(aWindow, 4, 0);
+        fc = Get(aWindow, 6, 2);
+        fd = Get(aWindow, 8, 3);
+        tmp0 = ((fa & fc) & fd) ^ ((fb & (fa | fd)) ^ fc);
+        tmp1 = ((fa ^ fc) & fd) ^ activeLanes;
+        tmp2 = (fa & (fb | fc)) ^ (fb ^ ((fb & fc) | fd));
+        tmp3 = fc & ((fa & (fb ^ fd)) ^ (fb | fd));
+        Vector128<ulong> s6a = tmp0 ^ (fe & tmp1);
+        Vector128<ulong> s6b = tmp2 ^ (fe & tmp3);
+
+        fe = Get(aWindow, 1, 2);
+        fa = Get(aWindow, 2, 0);
+        fb = Get(aWindow, 6, 1);
+        fc = Get(aWindow, 7, 2);
+        fd = Get(aWindow, 7, 3);
+        tmp0 = fb ^ ((fc & fd) | (fa ^ (fc ^ fd)));
+        tmp1 = (fb | fd) & ((fa & fc) | (fb ^ (fc ^ fd)));
+        tmp2 = (fa | fb) ^ ((fc & (fb | fd)) ^ fd);
+        tmp3 = fd | ((fa & fc) ^ activeLanes);
+        Vector128<ulong> s7a = tmp0 ^ (fe & tmp1);
+        Vector128<ulong> s7b = tmp2 ^ (fe & tmp3);
+
+        Vector128<ulong> extraB0 = Get(bWindow, 8, 2) ^ Get(bWindow, 5, 3) ^ Get(bWindow, 2, 1) ^ Get(bWindow, 7, 0);
+        Vector128<ulong> extraB1 = Get(bWindow, 4, 3) ^ Get(bWindow, 7, 2) ^ Get(bWindow, 3, 0) ^ Get(bWindow, 4, 1);
+        Vector128<ulong> extraB2 = Get(bWindow, 5, 0) ^ Get(bWindow, 7, 1) ^ Get(bWindow, 2, 3) ^ Get(bWindow, 3, 2);
+        Vector128<ulong> extraB3 = Get(bWindow, 2, 0) ^ Get(bWindow, 5, 1) ^ Get(bWindow, 6, 2) ^ Get(bWindow, 8, 3);
+        Vector128<ulong> nextA0 = Get(aWindow, 9, 0) ^ x[0];
+        Vector128<ulong> nextA1 = Get(aWindow, 9, 1) ^ x[1];
+        Vector128<ulong> nextA2 = Get(aWindow, 9, 2) ^ x[2];
+        Vector128<ulong> nextA3 = Get(aWindow, 9, 3) ^ x[3];
+        Vector128<ulong> nextB0 = Get(bWindow, 6, 0) ^ Get(bWindow, 9, 0) ^ y[0];
+        Vector128<ulong> nextB1 = Get(bWindow, 6, 1) ^ Get(bWindow, 9, 1) ^ y[1];
+        Vector128<ulong> nextB2 = Get(bWindow, 6, 2) ^ Get(bWindow, 9, 2) ^ y[2];
+        Vector128<ulong> nextB3 = Get(bWindow, 6, 3) ^ Get(bWindow, 9, 3) ^ y[3];
         if (includeInput)
         {
             nextA0 ^= d[0] ^ inputA[0];
@@ -365,109 +447,6 @@ internal static class CsaBitslicedStreamCipher
         f[bit] = e[bit] ^ (q & (sum ^ e[bit]));
         e[bit] = previousF;
         carry = nextCarry;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    private static void EvaluateSBoxes(
-        ReadOnlySpan<Vector128<ulong>> a,
-        int registerOffset,
-        Vector128<ulong> ones,
-        out Vector128<ulong> s1a,
-        out Vector128<ulong> s1b,
-        out Vector128<ulong> s2a,
-        out Vector128<ulong> s2b,
-        out Vector128<ulong> s3a,
-        out Vector128<ulong> s3b,
-        out Vector128<ulong> s4a,
-        out Vector128<ulong> s4b,
-        out Vector128<ulong> s5a,
-        out Vector128<ulong> s5b,
-        out Vector128<ulong> s6a,
-        out Vector128<ulong> s6b,
-        out Vector128<ulong> s7a,
-        out Vector128<ulong> s7b)
-    {
-        Vector128<ulong> fe = Get(a, registerOffset, 3, 0);
-        Vector128<ulong> fa = Get(a, registerOffset, 0, 2);
-        Vector128<ulong> fb = Get(a, registerOffset, 5, 1);
-        Vector128<ulong> fc = Get(a, registerOffset, 6, 3);
-        Vector128<ulong> fd = Get(a, registerOffset, 8, 0);
-        Vector128<ulong> tmp0 = fa ^ (fb ^ ((((fa | fb) ^ fc) | (fc ^ fd)) ^ ones));
-        Vector128<ulong> tmp1 = (fa | fb) ^ ((fc & (fa | (fb ^ fd))) ^ ones);
-        Vector128<ulong> tmp2 = fa ^ ((fb & fd) ^ ((fa & fd) | fc));
-        Vector128<ulong> tmp3 = (fa & fc) ^ (fa ^ ((fa & fb) | fd));
-        s1a = tmp0 ^ (fe & tmp1);
-        s1b = tmp2 ^ (fe & tmp3);
-
-        fe = Get(a, registerOffset, 1, 1);
-        fa = Get(a, registerOffset, 2, 2);
-        fb = Get(a, registerOffset, 5, 3);
-        fc = Get(a, registerOffset, 6, 0);
-        fd = Get(a, registerOffset, 8, 1);
-        tmp0 = fa ^ ((fb & (fc | fd)) ^ (fc ^ (fd ^ ones)));
-        tmp1 = (fa & (fb ^ fd)) | ((fa | fb) & fc);
-        tmp2 = (fb & fd) ^ ((fa & fd) | (fb ^ (fc ^ ones)));
-        tmp3 = (fa & fd) | (fa ^ (fb ^ (fc & fd)));
-        s2a = tmp0 ^ (fe & tmp1);
-        s2b = tmp2 ^ (fe & tmp3);
-
-        fe = Get(a, registerOffset, 0, 3);
-        fa = Get(a, registerOffset, 1, 0);
-        fb = Get(a, registerOffset, 4, 1);
-        fc = Get(a, registerOffset, 4, 3);
-        fd = Get(a, registerOffset, 5, 2);
-        tmp0 = fa ^ (fb ^ ((fc & (fa | fd)) ^ fd));
-        tmp1 = (fa & fc) ^ ((fa ^ fd) | ((fb | fc) ^ (fd ^ ones)));
-        tmp2 = fa ^ (((fb ^ fc) & fd) ^ fc);
-        s3a = tmp0 ^ ((fe ^ ones) & tmp1);
-        s3b = tmp2 ^ fe;
-
-        fe = Get(a, registerOffset, 2, 3);
-        fa = Get(a, registerOffset, 0, 1);
-        fb = Get(a, registerOffset, 1, 3);
-        fc = Get(a, registerOffset, 3, 2);
-        fd = Get(a, registerOffset, 7, 0);
-        tmp0 = fa ^ ((fc & (fa ^ fd)) | (fb ^ (fc | (fd ^ ones))));
-        tmp1 = (fa & fb) ^ (fb ^ (((fa | fc) & fd) ^ fc));
-        tmp2 = fa ^ ((fb & fc) | (((fa & (fb ^ fd)) | fc) ^ fd));
-        s4a = tmp0 ^ (fe & (tmp1 ^ tmp0));
-        s4b = (s4a ^ tmp2) ^ fe;
-
-        fe = Get(a, registerOffset, 4, 2);
-        fa = Get(a, registerOffset, 3, 3);
-        fb = Get(a, registerOffset, 5, 0);
-        fc = Get(a, registerOffset, 7, 1);
-        fd = Get(a, registerOffset, 8, 2);
-        tmp0 = ((fa & (fb | fc)) ^ fb) | (((fa ^ fc) | fd) ^ ones);
-        tmp1 = fb ^ ((fc ^ fd) & (fc ^ (fb | (fa ^ fd))));
-        tmp2 = (fa & fc) ^ (fb ^ ((fb | (fa ^ fc)) & fd));
-        tmp3 = ((fa ^ fb) & (fc ^ ones)) | fd;
-        s5a = tmp0 ^ (fe & tmp1);
-        s5b = tmp2 ^ (fe & tmp3);
-
-        fe = Get(a, registerOffset, 2, 1);
-        fa = Get(a, registerOffset, 3, 1);
-        fb = Get(a, registerOffset, 4, 0);
-        fc = Get(a, registerOffset, 6, 2);
-        fd = Get(a, registerOffset, 8, 3);
-        tmp0 = ((fa & fc) & fd) ^ ((fb & (fa | fd)) ^ fc);
-        tmp1 = ((fa ^ fc) & fd) ^ ones;
-        tmp2 = (fa & (fb | fc)) ^ (fb ^ ((fb & fc) | fd));
-        tmp3 = fc & ((fa & (fb ^ fd)) ^ (fb | fd));
-        s6a = tmp0 ^ (fe & tmp1);
-        s6b = tmp2 ^ (fe & tmp3);
-
-        fe = Get(a, registerOffset, 1, 2);
-        fa = Get(a, registerOffset, 2, 0);
-        fb = Get(a, registerOffset, 6, 1);
-        fc = Get(a, registerOffset, 7, 2);
-        fd = Get(a, registerOffset, 7, 3);
-        tmp0 = fb ^ ((fc & fd) | (fa ^ (fc ^ fd)));
-        tmp1 = (fb | fd) & ((fa & fc) | (fb ^ (fc ^ fd)));
-        tmp2 = (fa | fb) ^ ((fc & (fb | fd)) ^ fd);
-        tmp3 = fd | ((fa & fc) ^ ones);
-        s7a = tmp0 ^ (fe & tmp1);
-        s7b = tmp2 ^ (fe & tmp3);
     }
 
     private static Vector128<ulong> CreateActiveLaneMask(int laneCount)

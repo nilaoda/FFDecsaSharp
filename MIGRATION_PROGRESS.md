@@ -411,3 +411,13 @@ Begin BitSlice foundation work:
   - FFdecsa C `PARALLEL_128_2LONG`: `502.333 ns` per packet, `1,990,713.116` packets per second;
   - both output checksums: `76DC3CFC07B7D0F2`.
 - Under this normalized protocol, the managed implementation reaches about 37% of the reference C throughput. This supersedes the older comparison whose C# side included source copying and had a different measurement boundary.
+
+### Fused Stream S-Boxes And Fixed Register Windows
+
+- Fused the seven stream S-box boolean networks directly into the 128-lane `Step` method, removing the 14-vector `out` parameter ABI from each stream step.
+- Materialized the A and B virtual-register windows once per step, so all S-box, feedback, and next-state reads use fixed offsets from that window rather than recomputing `registerOffset * 4` for every access.
+- Arm64 RyuJIT disassembly confirms that dynamic address-extension instructions in `Step` decreased from 57 to 8.
+- Apple M4, .NET 10.0.8, 128-lane MediumRun, all with `0 B` managed allocation:
+  - isolated stream generation: `649.8 ns` to `609.8 ns` per packet;
+  - 128-packet copy-and-decrypt path: `1.320 us` to `1.280 us` per packet.
+- The normalized serial `ffdecsa-compare-v1` run measured C# at `1300.991 ns` per packet (`768,644.609` packets per second), versus FFdecsa C at `499.956 ns` per packet (`2,000,175.015` packets per second), with matching checksum `76DC3CFC07B7D0F2`. The managed implementation now reaches 38.4% of the reference throughput.
