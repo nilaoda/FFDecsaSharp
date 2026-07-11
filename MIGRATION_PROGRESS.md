@@ -358,3 +358,13 @@ Begin BitSlice foundation work:
 - The same-key batch now reaches approximately 69% of the calibrated FFdecsa 64-lane C throughput. The remaining hotspot is the stream-state step itself.
 - `dotnet build src/FFDecsaSharp.slnx --no-restore -m:1` completed with 0 warnings and 0 errors.
 - `dotnet test src/FFDecsaSharp.slnx --no-build` passed 69 tests.
+
+### NativeAOT Throughput Harness
+
+- Added `FFDecsaSharp.PerfHarness`, a dependency-free 64-packet throughput harness suitable for both JIT and NativeAOT execution.
+- BenchmarkDotNet itself cannot be published with NativeAOT because its reflection and diagnostics dependencies are trim/AOT-incompatible; the harness avoids those dependencies.
+- Apple M4 measurements, including packet-buffer copying:
+  - Release JIT: `1761.1 ns` per packet;
+  - default NativeAOT: `1985.3 ns` per packet;
+  - NativeAOT with `OptimizationPreference=Speed`: `1833.4 ns` per packet.
+- Speed-preference AOT is now the harness default. It is close to the JIT result but does not yet outperform it, so further progress remains dependent on algorithm and data-layout optimization.
