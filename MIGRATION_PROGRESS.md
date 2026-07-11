@@ -421,3 +421,11 @@ Begin BitSlice foundation work:
   - isolated stream generation: `649.8 ns` to `609.8 ns` per packet;
   - 128-packet copy-and-decrypt path: `1.320 us` to `1.280 us` per packet.
 - The normalized serial `ffdecsa-compare-v1` run measured C# at `1300.991 ns` per packet (`768,644.609` packets per second), versus FFdecsa C at `499.956 ns` per packet (`2,000,175.015` packets per second), with matching checksum `76DC3CFC07B7D0F2`. The managed implementation now reaches 38.4% of the reference throughput.
+
+### Unrolled 128-Lane Block S-Box Schedule
+
+- Added a fixed-width block S-box schedule for exactly 128 lanes. It expands the 128 independent transform-table lookups in each block round, following FFdecsa's strategy of exposing independent lookups to the compiler; other batch widths retain the compact loop.
+- Apple M4, .NET 10.0.8, 128-lane MediumRun, all with `0 B` managed allocation:
+  - isolated column-major block decipher: `28.59 ns` to `25.75 ns` per block;
+  - 128-packet copy-and-decrypt path: `1.271 us` to `1.216 us` per packet.
+- The normalized serial `ffdecsa-compare-v1` run measured C# at `1241.728 ns` per packet (`805,329.232` packets per second), versus FFdecsa C at `497.894 ns` per packet (`2,008,458.539` packets per second), with matching checksum `76DC3CFC07B7D0F2`. The managed implementation now reaches 40.1% of the reference throughput.
