@@ -308,3 +308,9 @@ Begin BitSlice foundation work:
 - The test suite now covers all five packet vectors exercised by the upstream FFdecsa test driver: full odd-key payload, full even-key payload, all-`0xFF` even-key payload, ten-block adaptation-field payload, and residual-byte payload.
 - `dotnet build src/FFDecsaSharp.slnx --no-restore -m:1` completed with 0 warnings and 0 errors.
 - `dotnet test src/FFDecsaSharp.slnx --no-build` passed 62 tests.
+
+### Cross-Platform Continuous Integration
+
+- Added a GitHub Actions workflow that restores, builds in Release configuration, and executes the full test suite on current Ubuntu, macOS, and Windows runners.
+- The workflow operates from `src/`, preserving the project-file structure while keeping repository automation in GitHub's conventional `.github/workflows` location.
+- It will run automatically when this local repository is connected to a GitHub remote and receives a push or pull request.
