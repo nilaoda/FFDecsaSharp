@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="FFDecsaSharp/FFDecsaSharp.csproj" />
+  <Project Path="FFDecsaSharp.Benchmarks/FFDecsaSharp.Benchmarks.csproj" />
+  <Project Path="FFDecsaSharp.Gui/FFDecsaSharp.Gui.csproj" />
+  <Project Path="FFDecsaSharp.Tests/FFDecsaSharp.Tests.csproj" />
+</Solution>
