@@ -299,3 +299,12 @@ Begin BitSlice foundation work:
 - It regressed the 64-packet benchmark to `4.514 us` per packet, versus the stable scalar interleaved baseline of `3.423 us` per packet.
 - The required state gather/scatter and dual table-selection work outweighed the table-lookup benefit, so this prototype was deliberately not retained.
 - Further SIMD work should target a representation that keeps block state resident in vector registers rather than vectorizing only the lookup stage.
+
+### Complete FFdecsa Reference Vector Coverage
+
+- Added end-to-end coverage for the remaining FFdecsa reference packet shapes:
+  - the full 184-byte all-`0xFF` payload decrypted with an all-`0xFF` even control word;
+  - an 80-byte, ten-block payload behind a 104-byte adaptation field.
+- The test suite now covers all five packet vectors exercised by the upstream FFdecsa test driver: full odd-key payload, full even-key payload, all-`0xFF` even-key payload, ten-block adaptation-field payload, and residual-byte payload.
+- `dotnet build src/FFDecsaSharp.slnx --no-restore -m:1` completed with 0 warnings and 0 errors.
+- `dotnet test src/FFDecsaSharp.slnx --no-build` passed 62 tests.
