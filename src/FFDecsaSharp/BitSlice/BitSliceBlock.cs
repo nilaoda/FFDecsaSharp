@@ -47,27 +47,31 @@ internal static class BitSliceBlock
         }
 
         Span<byte> output = destination[..(laneCount * BytesPerLane)];
-        output.Clear();
+        int laneGroupCount = (laneCount + 7) / 8;
 
-        for (int lane = 0; lane < laneCount; lane++)
+        for (int byteIndex = 0; byteIndex < BytesPerLane; byteIndex++)
         {
-            int destinationOffset = lane * BytesPerLane;
-            ulong laneMask = LaneMask(lane);
+            int planeOffset = byteIndex * 8;
 
-            for (int byteIndex = 0; byteIndex < BytesPerLane; byteIndex++)
+            for (int laneGroup = 0; laneGroup < laneGroupCount; laneGroup++)
             {
-                int planeOffset = byteIndex * 8;
-                byte value = 0;
+                int shift = 56 - (laneGroup * 8);
+                ulong transposed = Transpose8By8(
+                    (ulong)ReverseBits((byte)(sourcePlanes[planeOffset] >> shift))
+                    | ((ulong)ReverseBits((byte)(sourcePlanes[planeOffset + 1] >> shift)) << 8)
+                    | ((ulong)ReverseBits((byte)(sourcePlanes[planeOffset + 2] >> shift)) << 16)
+                    | ((ulong)ReverseBits((byte)(sourcePlanes[planeOffset + 3] >> shift)) << 24)
+                    | ((ulong)ReverseBits((byte)(sourcePlanes[planeOffset + 4] >> shift)) << 32)
+                    | ((ulong)ReverseBits((byte)(sourcePlanes[planeOffset + 5] >> shift)) << 40)
+                    | ((ulong)ReverseBits((byte)(sourcePlanes[planeOffset + 6] >> shift)) << 48)
+                    | ((ulong)ReverseBits((byte)(sourcePlanes[planeOffset + 7] >> shift)) << 56));
 
-                for (int bitIndex = 0; bitIndex < 8; bitIndex++)
+                int firstLane = laneGroup * 8;
+                int lanesInGroup = Math.Min(8, laneCount - firstLane);
+                for (int lane = 0; lane < lanesInGroup; lane++)
                 {
-                    if ((sourcePlanes[planeOffset + bitIndex] & laneMask) != 0)
-                    {
-                        value |= (byte)(0x80 >> bitIndex);
-                    }
+                    output[((firstLane + lane) * BytesPerLane) + byteIndex] = ReverseBits((byte)(transposed >> (lane * 8)));
                 }
-
-                output[destinationOffset + byteIndex] = value;
             }
         }
 
@@ -84,5 +88,25 @@ internal static class BitSliceBlock
     private static ulong LaneMask(int lane)
     {
         return 1UL << (MaxLaneCount - 1 - lane);
+    }
+
+    private static byte ReverseBits(byte value)
+    {
+        value = (byte)(((value & 0x55) << 1) | ((value >> 1) & 0x55));
+        value = (byte)(((value & 0x33) << 2) | ((value >> 2) & 0x33));
+        return (byte)((value << 4) | (value >> 4));
+    }
+
+    private static ulong Transpose8By8(ulong value)
+    {
+        value = (value & 0xAA55AA55AA55AA55UL)
+            | ((value & 0x00AA00AA00AA00AAUL) << 7)
+            | ((value >> 7) & 0x00AA00AA00AA00AAUL);
+        value = (value & 0xCCCC3333CCCC3333UL)
+            | ((value & 0x0000CCCC0000CCCCUL) << 14)
+            | ((value >> 14) & 0x0000CCCC0000CCCCUL);
+        return (value & 0xF0F0F0F00F0F0F0FUL)
+            | ((value & 0x00000000F0F0F0F0UL) << 28)
+            | ((value >> 28) & 0x00000000F0F0F0F0UL);
     }
 }

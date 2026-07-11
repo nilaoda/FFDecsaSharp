@@ -346,3 +346,15 @@ Begin BitSlice foundation work:
 - The remaining primary cost is the bit-sliced stream kernel at `1.359 us` per packet for 23 generated stream blocks; NativeAOT alone is not expected to close this gap.
 - `dotnet build src/FFDecsaSharp.slnx --no-restore -m:1` completed with 0 warnings and 0 errors.
 - `dotnet test src/FFDecsaSharp.slnx --no-build` passed 64 tests.
+
+### SWAR Bit-Plane Decode
+
+- Replaced the scalar lane-by-lane bit-plane decode with an eight-lane `ulong` SWAR transpose, preserving the existing bit order and partial-lane behavior.
+- Added roundtrip coverage for partial lane groups of 1, 7, 8, 9, and 63 lanes.
+- Apple M4 short-run results, 0 B managed allocation:
+  - bit-sliced stream generation for 23 blocks: `1.359 us` to `0.968 us` per packet;
+  - same-key 64-packet batch: `2.290 us` to `1.842 us` per packet;
+  - alternating-key 64-packet batch: `2.307 us` per packet.
+- The same-key batch now reaches approximately 69% of the calibrated FFdecsa 64-lane C throughput. The remaining hotspot is the stream-state step itself.
+- `dotnet build src/FFDecsaSharp.slnx --no-restore -m:1` completed with 0 warnings and 0 errors.
+- `dotnet test src/FFDecsaSharp.slnx --no-build` passed 69 tests.

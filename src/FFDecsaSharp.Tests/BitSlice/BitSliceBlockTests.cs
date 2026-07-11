@@ -92,4 +92,27 @@ public sealed class BitSliceBlockTests
         Assert.True(BitSliceBlock.TryDecode(planes, BitSliceBlock.MaxLaneCount, destination));
         Assert.Equal(source, destination);
     }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(7)]
+    [InlineData(8)]
+    [InlineData(9)]
+    [InlineData(63)]
+    public void EncodeThenDecodeRoundTripsPartialLaneGroups(int laneCount)
+    {
+        byte[] source = new byte[BitSliceBlock.BytesPerLane * laneCount];
+        byte[] destination = new byte[source.Length];
+        Span<ulong> planes = stackalloc ulong[BitSliceBlock.BitPlaneCount];
+
+        for (int index = 0; index < source.Length; index++)
+        {
+            source[index] = (byte)((index * 71 + 23) & 0xFF);
+        }
+
+        Assert.True(BitSliceBlock.TryEncode(source, laneCount, planes));
+        Assert.True(BitSliceBlock.TryDecode(planes, laneCount, destination));
+
+        Assert.Equal(source, destination);
+    }
 }
