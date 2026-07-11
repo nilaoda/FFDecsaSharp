@@ -137,6 +137,12 @@ internal static class CsaBlockCipher
         Span<byte> sBoxOutput,
         Span<byte> permutationOutput)
     {
+        if (blockCount == BitSlice.BitSliceBlock.MaxLaneCount)
+        {
+            DecipherBlocksColumnMajor128(blockSchedule, input, output, state, sBoxOutput, permutationOutput);
+            return;
+        }
+
         int offset = CsaKeySchedule.BlockScheduleLength;
 
         for (int blockIndex = 0; blockIndex < blockCount; blockIndex++)
@@ -262,6 +268,100 @@ internal static class CsaBlockCipher
     }
 
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private static void DecipherBlocksColumnMajor128(
+        ReadOnlySpan<byte> blockSchedule,
+        ReadOnlySpan<byte> input,
+        Span<byte> output,
+        Span<byte> state,
+        Span<byte> sBoxOutput,
+        Span<byte> permutationOutput)
+    {
+        const int LaneCount = BitSlice.BitSliceBlock.MaxLaneCount;
+        const int ColumnStride = LaneCount;
+        int offset = CsaKeySchedule.BlockScheduleLength;
+
+        ref byte inputReference = ref MemoryMarshal.GetReference(input);
+        ref byte stateReference = ref MemoryMarshal.GetReference(state);
+        ref byte outputReference = ref MemoryMarshal.GetReference(output);
+        ref byte blockScheduleReference = ref MemoryMarshal.GetReference(blockSchedule);
+        ref byte sBoxReference = ref MemoryMarshal.GetReference(sBoxOutput);
+        ref byte permutationReference = ref MemoryMarshal.GetReference(permutationOutput);
+        ReadOnlySpan<ushort> transform = BlockTransform;
+        ref ushort transformReference = ref MemoryMarshal.GetReference(transform);
+
+        // Column-major load with fixed 128-lane stride: state[(offset+b)*128 + lane] = input[lane*8 + b]
+        for (int lane = 0; lane < LaneCount; lane++)
+        {
+            ref byte laneInput = ref Unsafe.Add(ref inputReference, lane * BlockSize);
+            int columnBase = (offset * ColumnStride) + lane;
+            Unsafe.Add(ref stateReference, columnBase) = Unsafe.Add(ref laneInput, 0);
+            Unsafe.Add(ref stateReference, columnBase + ColumnStride) = Unsafe.Add(ref laneInput, 1);
+            Unsafe.Add(ref stateReference, columnBase + (2 * ColumnStride)) = Unsafe.Add(ref laneInput, 2);
+            Unsafe.Add(ref stateReference, columnBase + (3 * ColumnStride)) = Unsafe.Add(ref laneInput, 3);
+            Unsafe.Add(ref stateReference, columnBase + (4 * ColumnStride)) = Unsafe.Add(ref laneInput, 4);
+            Unsafe.Add(ref stateReference, columnBase + (5 * ColumnStride)) = Unsafe.Add(ref laneInput, 5);
+            Unsafe.Add(ref stateReference, columnBase + (6 * ColumnStride)) = Unsafe.Add(ref laneInput, 6);
+            Unsafe.Add(ref stateReference, columnBase + (7 * ColumnStride)) = Unsafe.Add(ref laneInput, 7);
+        }
+
+        for (int round = CsaKeySchedule.BlockScheduleLength - 1; round >= 0; round--)
+        {
+            int sBoxInputOffset = (offset + 6) * ColumnStride;
+            byte roundKey = Unsafe.Add(ref blockScheduleReference, round);
+            PopulateTransformOutputs128(
+                ref transformReference,
+                roundKey,
+                ref stateReference,
+                sBoxInputOffset,
+                ref sBoxReference,
+                ref permutationReference);
+
+            offset--;
+            int stateOffset = offset * ColumnStride;
+            int stateOffset2 = stateOffset + (2 * ColumnStride);
+            int stateOffset3 = stateOffset + (3 * ColumnStride);
+            int stateOffset4 = stateOffset + (4 * ColumnStride);
+            int stateOffset6 = stateOffset + (6 * ColumnStride);
+            int stateOffset8 = stateOffset + (8 * ColumnStride);
+
+            // Arm64 path: eight Vector128 updates cover all 128 lanes.
+            for (int updateIndex = 0; updateIndex < LaneCount; updateIndex += Vector128<byte>.Count)
+            {
+                Vector128<byte> state0 = Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset8 + updateIndex))
+                    ^ Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref sBoxReference, updateIndex));
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset + updateIndex), state0);
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref stateReference, stateOffset6 + updateIndex),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset6 + updateIndex))
+                    ^ Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref permutationReference, updateIndex)));
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref stateReference, stateOffset4 + updateIndex),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset4 + updateIndex)) ^ state0);
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref stateReference, stateOffset3 + updateIndex),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset3 + updateIndex)) ^ state0);
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref stateReference, stateOffset2 + updateIndex),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset2 + updateIndex)) ^ state0);
+            }
+        }
+
+        // Column-major store with fixed stride.
+        for (int lane = 0; lane < LaneCount; lane++)
+        {
+            ref byte laneOutput = ref Unsafe.Add(ref outputReference, lane * BlockSize);
+            int columnBase = (offset * ColumnStride) + lane;
+            Unsafe.Add(ref laneOutput, 0) = Unsafe.Add(ref stateReference, columnBase);
+            Unsafe.Add(ref laneOutput, 1) = Unsafe.Add(ref stateReference, columnBase + ColumnStride);
+            Unsafe.Add(ref laneOutput, 2) = Unsafe.Add(ref stateReference, columnBase + (2 * ColumnStride));
+            Unsafe.Add(ref laneOutput, 3) = Unsafe.Add(ref stateReference, columnBase + (3 * ColumnStride));
+            Unsafe.Add(ref laneOutput, 4) = Unsafe.Add(ref stateReference, columnBase + (4 * ColumnStride));
+            Unsafe.Add(ref laneOutput, 5) = Unsafe.Add(ref stateReference, columnBase + (5 * ColumnStride));
+            Unsafe.Add(ref laneOutput, 6) = Unsafe.Add(ref stateReference, columnBase + (6 * ColumnStride));
+            Unsafe.Add(ref laneOutput, 7) = Unsafe.Add(ref stateReference, columnBase + (7 * ColumnStride));
+        }
+    }
+
     private static void PopulateTransformOutputs128(
         ref ushort transformReference,
         byte roundKey,

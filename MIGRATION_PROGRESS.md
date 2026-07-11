@@ -509,3 +509,25 @@ Interpretation:
 - The remaining gap to FFdecsa C is still dominated by the boolean-network arithmetic itself and block S-box work, not by the small ABI/loop packaging around `Step`.
 - Host thermal/noise currently swings managed protocol results by ~200 ns; only changes that beat HEAD by a clear margin across paired runs should be kept.
 - Do not revive `StepFull` / stream-block helper packaging without quieter paired measurements and an isolated stream BDN win.
+
+### Phase 4 — Column-major 128-lane specialization (kept)
+
+Added a dedicated `DecipherBlocksColumnMajor128` fast path used when `blockCount == 128`:
+
+- Fixed 128-lane column stride for load/store (`Unsafe` lane-major ↔ column-major packing without `blockCount` multiplies in the inner address math).
+- Unrolled 8-byte column load/store per lane.
+- Round-state updates use a pure Arm64-friendly `Vector128` loop over all 128 lanes (no per-round `IsHardwareAccelerated` branching for the full-batch path).
+- Generic `blockCount != 128` path unchanged.
+
+Correctness:
+
+- `dotnet test src/FFDecsaSharp.slnx -c Release -m:1` — 73 passed.
+- Protocol checksum `76DC3CFC07B7D0F2`, `managed_allocated_bytes=0`.
+
+Measurement (Apple M4, .NET 10.0.8):
+
+- Isolated BDN `DecipherBlocksColumnMajor` short job:
+  - Phase 4: **22.47 ns**/block
+  - HEAD baseline: **27.79 ns**/block
+  - ≈ **19%** isolated block-core improvement.
+- Full protocol e2e remains noise-dominated on this host (managed ~`1119–1175 ns`, C ~`534 ns` in the same window). Keep decision is based on the isolated block win plus unchanged correctness gates, not on a single noisy e2e sample.
