@@ -1,4 +1,6 @@
 using System.Runtime.Intrinsics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace FFDecsaSharp.BitSlice;
 
@@ -48,6 +50,12 @@ internal static class BitSliceBlock
             return false;
         }
 
+        if (laneCount == MaxLaneCount)
+        {
+            Decode128(sourcePlanes, destination);
+            return true;
+        }
+
         Span<byte> output = destination[..(laneCount * BytesPerLane)];
         int laneGroupCount = (laneCount + 7) / 8;
 
@@ -79,6 +87,62 @@ internal static class BitSliceBlock
         }
 
         return true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private static void Decode128(ReadOnlySpan<Vector128<ulong>> sourcePlanes, Span<byte> destination)
+    {
+        Span<byte> output = destination[..(MaxLaneCount * BytesPerLane)];
+        ref Vector128<ulong> sourceReference = ref MemoryMarshal.GetReference(sourcePlanes);
+        ref byte outputReference = ref MemoryMarshal.GetReference(output);
+        for (int byteIndex = 0; byteIndex < BytesPerLane; byteIndex++)
+        {
+            int planeOffset = byteIndex * 8;
+            Vector128<ulong> plane0 = Unsafe.Add(ref sourceReference, planeOffset);
+            Vector128<ulong> plane1 = Unsafe.Add(ref sourceReference, planeOffset + 1);
+            Vector128<ulong> plane2 = Unsafe.Add(ref sourceReference, planeOffset + 2);
+            Vector128<ulong> plane3 = Unsafe.Add(ref sourceReference, planeOffset + 3);
+            Vector128<ulong> plane4 = Unsafe.Add(ref sourceReference, planeOffset + 4);
+            Vector128<ulong> plane5 = Unsafe.Add(ref sourceReference, planeOffset + 5);
+            Vector128<ulong> plane6 = Unsafe.Add(ref sourceReference, planeOffset + 6);
+            Vector128<ulong> plane7 = Unsafe.Add(ref sourceReference, planeOffset + 7);
+
+            for (int vectorIndex = 0; vectorIndex < 2; vectorIndex++)
+            {
+                ulong planeValue0 = plane0.GetElement(vectorIndex);
+                ulong planeValue1 = plane1.GetElement(vectorIndex);
+                ulong planeValue2 = plane2.GetElement(vectorIndex);
+                ulong planeValue3 = plane3.GetElement(vectorIndex);
+                ulong planeValue4 = plane4.GetElement(vectorIndex);
+                ulong planeValue5 = plane5.GetElement(vectorIndex);
+                ulong planeValue6 = plane6.GetElement(vectorIndex);
+                ulong planeValue7 = plane7.GetElement(vectorIndex);
+
+                for (int groupInVector = 0; groupInVector < 8; groupInVector++)
+                {
+                    int shift = 56 - (groupInVector * 8);
+                    ulong transposed = Transpose8By8(
+                        (ulong)ReverseBits((byte)(planeValue0 >> shift))
+                        | ((ulong)ReverseBits((byte)(planeValue1 >> shift)) << 8)
+                        | ((ulong)ReverseBits((byte)(planeValue2 >> shift)) << 16)
+                        | ((ulong)ReverseBits((byte)(planeValue3 >> shift)) << 24)
+                        | ((ulong)ReverseBits((byte)(planeValue4 >> shift)) << 32)
+                        | ((ulong)ReverseBits((byte)(planeValue5 >> shift)) << 40)
+                        | ((ulong)ReverseBits((byte)(planeValue6 >> shift)) << 48)
+                        | ((ulong)ReverseBits((byte)(planeValue7 >> shift)) << 56));
+
+                    int firstLane = ((vectorIndex * 8) + groupInVector) * 8;
+                    Unsafe.Add(ref outputReference, (firstLane * BytesPerLane) + byteIndex) = ReverseBits((byte)transposed);
+                    Unsafe.Add(ref outputReference, ((firstLane + 1) * BytesPerLane) + byteIndex) = ReverseBits((byte)(transposed >> 8));
+                    Unsafe.Add(ref outputReference, ((firstLane + 2) * BytesPerLane) + byteIndex) = ReverseBits((byte)(transposed >> 16));
+                    Unsafe.Add(ref outputReference, ((firstLane + 3) * BytesPerLane) + byteIndex) = ReverseBits((byte)(transposed >> 24));
+                    Unsafe.Add(ref outputReference, ((firstLane + 4) * BytesPerLane) + byteIndex) = ReverseBits((byte)(transposed >> 32));
+                    Unsafe.Add(ref outputReference, ((firstLane + 5) * BytesPerLane) + byteIndex) = ReverseBits((byte)(transposed >> 40));
+                    Unsafe.Add(ref outputReference, ((firstLane + 6) * BytesPerLane) + byteIndex) = ReverseBits((byte)(transposed >> 48));
+                    Unsafe.Add(ref outputReference, ((firstLane + 7) * BytesPerLane) + byteIndex) = ReverseBits((byte)(transposed >> 56));
+                }
+            }
+        }
     }
 
     private static bool HasValidArguments(int byteLength, int laneCount, int planeLength)

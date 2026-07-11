@@ -71,6 +71,14 @@ internal static class CsaBitslicedStreamCipher
         int registerOffset = RegisterHistoryLength;
         Span<Vector128<ulong>> inputA = stackalloc Vector128<ulong>[NibbleWidth];
         Span<Vector128<ulong>> inputB = stackalloc Vector128<ulong>[NibbleWidth];
+        ref Vector128<ulong> aReference = ref MemoryMarshal.GetReference(a);
+        ref Vector128<ulong> bReference = ref MemoryMarshal.GetReference(b);
+        ref Vector128<ulong> xReference = ref MemoryMarshal.GetReference(x);
+        ref Vector128<ulong> yReference = ref MemoryMarshal.GetReference(y);
+        ref Vector128<ulong> zReference = ref MemoryMarshal.GetReference(z);
+        ref Vector128<ulong> dReference = ref MemoryMarshal.GetReference(d);
+        ref Vector128<ulong> eReference = ref MemoryMarshal.GetReference(e);
+        ref Vector128<ulong> fReference = ref MemoryMarshal.GetReference(f);
 
         for (int byteIndex = 0; byteIndex < CsaStreamCipher.BlockSize; byteIndex++)
         {
@@ -83,7 +91,14 @@ internal static class CsaBitslicedStreamCipher
             for (int step = 0; step < NibbleWidth; step++)
             {
                 bool useFirstInput = (step & 1) == 0;
-                Step(a, b, x, y, z, d, e, f, ref p, ref q, ref r, ref registerOffset, useFirstInput ? inputA : inputB, useFirstInput ? inputB : inputA, includeInput: true, activeLanes);
+                if (useFirstInput)
+                {
+                    Step<InitializationStep>(ref aReference, ref bReference, ref xReference, ref yReference, ref zReference, ref dReference, ref eReference, ref fReference, ref p, ref q, ref r, ref registerOffset, ref MemoryMarshal.GetReference(inputA), ref MemoryMarshal.GetReference(inputB), activeLanes);
+                }
+                else
+                {
+                    Step<InitializationStep>(ref aReference, ref bReference, ref xReference, ref yReference, ref zReference, ref dReference, ref eReference, ref fReference, ref p, ref q, ref r, ref registerOffset, ref MemoryMarshal.GetReference(inputB), ref MemoryMarshal.GetReference(inputA), activeLanes);
+                }
             }
         }
 
@@ -100,7 +115,7 @@ internal static class CsaBitslicedStreamCipher
             {
                 for (int step = 0; step < NibbleWidth; step++)
                 {
-                    Step(a, b, x, y, z, d, e, f, ref p, ref q, ref r, ref registerOffset, ReadOnlySpan<Vector128<ulong>>.Empty, ReadOnlySpan<Vector128<ulong>>.Empty, includeInput: false, activeLanes);
+                    Step<NormalStep>(ref aReference, ref bReference, ref xReference, ref yReference, ref zReference, ref dReference, ref eReference, ref fReference, ref p, ref q, ref r, ref registerOffset, ref aReference, ref bReference, activeLanes);
                     outputPlanes[(byteIndex * 8) + (step * 2)] = d[2] ^ d[3];
                     outputPlanes[(byteIndex * 8) + (step * 2) + 1] = d[0] ^ d[1];
                 }
@@ -141,12 +156,19 @@ internal static class CsaBitslicedStreamCipher
         Span<byte> chainingValues = stackalloc byte[packetCount * CsaStreamCipher.BlockSize];
         Span<byte> blockOutput = stackalloc byte[packetCount * CsaBlockCipher.BlockSize];
         Span<byte> blockState = stackalloc byte[packetCount * 64];
+        Span<byte> blockSBoxOutput = stackalloc byte[packetCount];
+        Span<byte> blockPermutationOutput = stackalloc byte[packetCount];
+        ref byte packetsReference = ref MemoryMarshal.GetReference(packets);
 
         for (int lane = 0; lane < packetCount; lane++)
         {
-            Span<byte> payload = packets.Slice((packetIndexes[lane] * TransportStream.TransportPacket.Size) + PayloadOffset, PayloadLength);
-            payload[..CsaStreamCipher.BlockSize].CopyTo(initializationBlocks.Slice(lane * CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize));
-            payload[..CsaStreamCipher.BlockSize].CopyTo(chainingValues.Slice(lane * CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize));
+            ref byte payloadReference = ref Unsafe.Add(
+                ref packetsReference,
+                (packetIndexes[lane] * TransportStream.TransportPacket.Size) + PayloadOffset);
+            ref byte initializationReference = ref MemoryMarshal.GetReference(initializationBlocks.Slice(lane * CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize));
+            ref byte chainingReference = ref MemoryMarshal.GetReference(chainingValues.Slice(lane * CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize));
+            Unsafe.CopyBlockUnaligned(ref initializationReference, ref payloadReference, CsaStreamCipher.BlockSize);
+            Unsafe.CopyBlockUnaligned(ref chainingReference, ref payloadReference, CsaStreamCipher.BlockSize);
         }
 
         Vector128<ulong> activeLanes = CreateActiveLaneMask(packetCount);
@@ -188,6 +210,14 @@ internal static class CsaBitslicedStreamCipher
         int registerOffset = RegisterHistoryLength;
         Span<Vector128<ulong>> inputA = stackalloc Vector128<ulong>[NibbleWidth];
         Span<Vector128<ulong>> inputB = stackalloc Vector128<ulong>[NibbleWidth];
+        ref Vector128<ulong> aReference = ref MemoryMarshal.GetReference(a);
+        ref Vector128<ulong> bReference = ref MemoryMarshal.GetReference(b);
+        ref Vector128<ulong> xReference = ref MemoryMarshal.GetReference(x);
+        ref Vector128<ulong> yReference = ref MemoryMarshal.GetReference(y);
+        ref Vector128<ulong> zReference = ref MemoryMarshal.GetReference(z);
+        ref Vector128<ulong> dReference = ref MemoryMarshal.GetReference(d);
+        ref Vector128<ulong> eReference = ref MemoryMarshal.GetReference(e);
+        ref Vector128<ulong> fReference = ref MemoryMarshal.GetReference(f);
 
         for (int byteIndex = 0; byteIndex < CsaStreamCipher.BlockSize; byteIndex++)
         {
@@ -200,7 +230,14 @@ internal static class CsaBitslicedStreamCipher
             for (int step = 0; step < NibbleWidth; step++)
             {
                 bool useFirstInput = (step & 1) == 0;
-                Step(a, b, x, y, z, d, e, f, ref p, ref q, ref r, ref registerOffset, useFirstInput ? inputA : inputB, useFirstInput ? inputB : inputA, includeInput: true, activeLanes);
+                if (useFirstInput)
+                {
+                    Step<InitializationStep>(ref aReference, ref bReference, ref xReference, ref yReference, ref zReference, ref dReference, ref eReference, ref fReference, ref p, ref q, ref r, ref registerOffset, ref MemoryMarshal.GetReference(inputA), ref MemoryMarshal.GetReference(inputB), activeLanes);
+                }
+                else
+                {
+                    Step<InitializationStep>(ref aReference, ref bReference, ref xReference, ref yReference, ref zReference, ref dReference, ref eReference, ref fReference, ref p, ref q, ref r, ref registerOffset, ref MemoryMarshal.GetReference(inputB), ref MemoryMarshal.GetReference(inputA), activeLanes);
+                }
             }
         }
 
@@ -215,7 +252,7 @@ internal static class CsaBitslicedStreamCipher
             {
                 for (int step = 0; step < NibbleWidth; step++)
                 {
-                    Step(a, b, x, y, z, d, e, f, ref p, ref q, ref r, ref registerOffset, ReadOnlySpan<Vector128<ulong>>.Empty, ReadOnlySpan<Vector128<ulong>>.Empty, includeInput: false, activeLanes);
+                    Step<NormalStep>(ref aReference, ref bReference, ref xReference, ref yReference, ref zReference, ref dReference, ref eReference, ref fReference, ref p, ref q, ref r, ref registerOffset, ref aReference, ref bReference, activeLanes);
                     outputPlanes[(byteIndex * 8) + (step * 2)] = d[2] ^ d[3];
                     outputPlanes[(byteIndex * 8) + (step * 2) + 1] = d[0] ^ d[1];
                 }
@@ -226,13 +263,21 @@ internal static class CsaBitslicedStreamCipher
                 return false;
             }
 
-            CsaBlockCipher.DecipherBlocksColumnMajor(controlWord.BlockSchedule, chainingValues, blockOutput, packetCount, blockState);
+            CsaBlockCipher.DecipherBlocksColumnMajor(
+                controlWord.BlockSchedule,
+                chainingValues,
+                blockOutput,
+                packetCount,
+                blockState,
+                blockSBoxOutput,
+                blockPermutationOutput);
             int currentOffset = blockIndex * CsaStreamCipher.BlockSize;
             int nextOffset = currentOffset + CsaStreamCipher.BlockSize;
             for (int lane = 0; lane < packetCount; lane++)
             {
-                Span<byte> payload = packets.Slice((packetIndexes[lane] * TransportStream.TransportPacket.Size) + PayloadOffset, PayloadLength);
-                ref byte payloadReference = ref MemoryMarshal.GetReference(payload);
+                ref byte payloadReference = ref Unsafe.Add(
+                    ref packetsReference,
+                    (packetIndexes[lane] * TransportStream.TransportPacket.Size) + PayloadOffset);
                 ref byte chainingReference = ref MemoryMarshal.GetReference(chainingValues.Slice(lane * CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize));
                 ref byte blockReference = ref MemoryMarshal.GetReference(blockOutput.Slice(lane * CsaBlockCipher.BlockSize, CsaBlockCipher.BlockSize));
                 ref byte streamReference = ref MemoryMarshal.GetReference(streamOutput.Slice(lane * CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize));
@@ -247,119 +292,53 @@ internal static class CsaBitslicedStreamCipher
             AdvanceRegisterWindow(a, b, ref registerOffset);
         }
 
-        CsaBlockCipher.DecipherBlocksColumnMajor(controlWord.BlockSchedule, chainingValues, blockOutput, packetCount, blockState);
+        CsaBlockCipher.DecipherBlocksColumnMajor(
+            controlWord.BlockSchedule,
+            chainingValues,
+            blockOutput,
+            packetCount,
+            blockState,
+            blockSBoxOutput,
+            blockPermutationOutput);
         for (int lane = 0; lane < packetCount; lane++)
         {
-            Span<byte> payload = packets.Slice((packetIndexes[lane] * TransportStream.TransportPacket.Size) + PayloadOffset, PayloadLength);
-            blockOutput.Slice(lane * CsaBlockCipher.BlockSize, CsaBlockCipher.BlockSize)
-                .CopyTo(payload.Slice(PayloadLength - CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize));
+            ref byte payloadReference = ref Unsafe.Add(
+                ref packetsReference,
+                (packetIndexes[lane] * TransportStream.TransportPacket.Size) + PayloadOffset + PayloadLength - CsaStreamCipher.BlockSize);
+            ref byte blockReference = ref MemoryMarshal.GetReference(blockOutput.Slice(lane * CsaBlockCipher.BlockSize, CsaBlockCipher.BlockSize));
+            Unsafe.CopyBlockUnaligned(ref payloadReference, ref blockReference, CsaStreamCipher.BlockSize);
         }
 
         return true;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    private static void Step(
-        Span<Vector128<ulong>> a,
-        Span<Vector128<ulong>> b,
-        Span<Vector128<ulong>> x,
-        Span<Vector128<ulong>> y,
-        Span<Vector128<ulong>> z,
-        Span<Vector128<ulong>> d,
-        Span<Vector128<ulong>> e,
-        Span<Vector128<ulong>> f,
+    private static void Step<TStep>(
+        ref Vector128<ulong> a,
+        ref Vector128<ulong> b,
+        ref Vector128<ulong> xReference,
+        ref Vector128<ulong> yReference,
+        ref Vector128<ulong> zReference,
+        ref Vector128<ulong> dReference,
+        ref Vector128<ulong> eReference,
+        ref Vector128<ulong> fReference,
         ref Vector128<ulong> p,
         ref Vector128<ulong> q,
         ref Vector128<ulong> r,
         ref int registerOffset,
-        ReadOnlySpan<Vector128<ulong>> inputA,
-        ReadOnlySpan<Vector128<ulong>> inputB,
-        bool includeInput,
+        ref Vector128<ulong> inputA,
+        ref Vector128<ulong> inputB,
         Vector128<ulong> activeLanes)
+        where TStep : struct, IStreamStep
     {
-        Span<Vector128<ulong>> aWindow = a.Slice(registerOffset * NibbleWidth);
-        Span<Vector128<ulong>> bWindow = b.Slice(registerOffset * NibbleWidth);
-        Vector128<ulong> fe = Get(aWindow, 3, 0);
-        Vector128<ulong> fa = Get(aWindow, 0, 2);
-        Vector128<ulong> fb = Get(aWindow, 5, 1);
-        Vector128<ulong> fc = Get(aWindow, 6, 3);
-        Vector128<ulong> fd = Get(aWindow, 8, 0);
-        Vector128<ulong> tmp0 = fa ^ (fb ^ ((((fa | fb) ^ fc) | (fc ^ fd)) ^ activeLanes));
-        Vector128<ulong> tmp1 = (fa | fb) ^ ((fc & (fa | (fb ^ fd))) ^ activeLanes);
-        Vector128<ulong> tmp2 = fa ^ ((fb & fd) ^ ((fa & fd) | fc));
-        Vector128<ulong> tmp3 = (fa & fc) ^ (fa ^ ((fa & fb) | fd));
-        Vector128<ulong> s1a = tmp0 ^ (fe & tmp1);
-        Vector128<ulong> s1b = tmp2 ^ (fe & tmp3);
-
-        fe = Get(aWindow, 1, 1);
-        fa = Get(aWindow, 2, 2);
-        fb = Get(aWindow, 5, 3);
-        fc = Get(aWindow, 6, 0);
-        fd = Get(aWindow, 8, 1);
-        tmp0 = fa ^ ((fb & (fc | fd)) ^ (fc ^ (fd ^ activeLanes)));
-        tmp1 = (fa & (fb ^ fd)) | ((fa | fb) & fc);
-        tmp2 = (fb & fd) ^ ((fa & fd) | (fb ^ (fc ^ activeLanes)));
-        tmp3 = (fa & fd) | (fa ^ (fb ^ (fc & fd)));
-        Vector128<ulong> s2a = tmp0 ^ (fe & tmp1);
-        Vector128<ulong> s2b = tmp2 ^ (fe & tmp3);
-
-        fe = Get(aWindow, 0, 3);
-        fa = Get(aWindow, 1, 0);
-        fb = Get(aWindow, 4, 1);
-        fc = Get(aWindow, 4, 3);
-        fd = Get(aWindow, 5, 2);
-        tmp0 = fa ^ (fb ^ ((fc & (fa | fd)) ^ fd));
-        tmp1 = (fa & fc) ^ ((fa ^ fd) | ((fb | fc) ^ (fd ^ activeLanes)));
-        tmp2 = fa ^ (((fb ^ fc) & fd) ^ fc);
-        Vector128<ulong> s3a = tmp0 ^ ((fe ^ activeLanes) & tmp1);
-        Vector128<ulong> s3b = tmp2 ^ fe;
-
-        fe = Get(aWindow, 2, 3);
-        fa = Get(aWindow, 0, 1);
-        fb = Get(aWindow, 1, 3);
-        fc = Get(aWindow, 3, 2);
-        fd = Get(aWindow, 7, 0);
-        tmp0 = fa ^ ((fc & (fa ^ fd)) | (fb ^ (fc | (fd ^ activeLanes))));
-        tmp1 = (fa & fb) ^ (fb ^ (((fa | fc) & fd) ^ fc));
-        tmp2 = fa ^ ((fb & fc) | (((fa & (fb ^ fd)) | fc) ^ fd));
-        Vector128<ulong> s4a = tmp0 ^ (fe & (tmp1 ^ tmp0));
-        Vector128<ulong> s4b = (s4a ^ tmp2) ^ fe;
-
-        fe = Get(aWindow, 4, 2);
-        fa = Get(aWindow, 3, 3);
-        fb = Get(aWindow, 5, 0);
-        fc = Get(aWindow, 7, 1);
-        fd = Get(aWindow, 8, 2);
-        tmp0 = ((fa & (fb | fc)) ^ fb) | (((fa ^ fc) | fd) ^ activeLanes);
-        tmp1 = fb ^ ((fc ^ fd) & (fc ^ (fb | (fa ^ fd))));
-        tmp2 = (fa & fc) ^ (fb ^ ((fb | (fa ^ fc)) & fd));
-        tmp3 = ((fa ^ fb) & (fc ^ activeLanes)) | fd;
-        Vector128<ulong> s5a = tmp0 ^ (fe & tmp1);
-        Vector128<ulong> s5b = tmp2 ^ (fe & tmp3);
-
-        fe = Get(aWindow, 2, 1);
-        fa = Get(aWindow, 3, 1);
-        fb = Get(aWindow, 4, 0);
-        fc = Get(aWindow, 6, 2);
-        fd = Get(aWindow, 8, 3);
-        tmp0 = ((fa & fc) & fd) ^ ((fb & (fa | fd)) ^ fc);
-        tmp1 = ((fa ^ fc) & fd) ^ activeLanes;
-        tmp2 = (fa & (fb | fc)) ^ (fb ^ ((fb & fc) | fd));
-        tmp3 = fc & ((fa & (fb ^ fd)) ^ (fb | fd));
-        Vector128<ulong> s6a = tmp0 ^ (fe & tmp1);
-        Vector128<ulong> s6b = tmp2 ^ (fe & tmp3);
-
-        fe = Get(aWindow, 1, 2);
-        fa = Get(aWindow, 2, 0);
-        fb = Get(aWindow, 6, 1);
-        fc = Get(aWindow, 7, 2);
-        fd = Get(aWindow, 7, 3);
-        tmp0 = fb ^ ((fc & fd) | (fa ^ (fc ^ fd)));
-        tmp1 = (fb | fd) & ((fa & fc) | (fb ^ (fc ^ fd)));
-        tmp2 = (fa | fb) ^ ((fc & (fb | fd)) ^ fd);
-        tmp3 = fd | ((fa & fc) ^ activeLanes);
-        Vector128<ulong> s7a = tmp0 ^ (fe & tmp1);
-        Vector128<ulong> s7b = tmp2 ^ (fe & tmp3);
+        VectorWindow aWindow = new(ref a, registerOffset * NibbleWidth);
+        VectorWindow bWindow = new(ref b, registerOffset * NibbleWidth);
+        Span<Vector128<ulong>> x = MemoryMarshal.CreateSpan(ref xReference, NibbleWidth);
+        Span<Vector128<ulong>> y = MemoryMarshal.CreateSpan(ref yReference, NibbleWidth);
+        Span<Vector128<ulong>> z = MemoryMarshal.CreateSpan(ref zReference, NibbleWidth);
+        Span<Vector128<ulong>> d = MemoryMarshal.CreateSpan(ref dReference, NibbleWidth);
+        Span<Vector128<ulong>> e = MemoryMarshal.CreateSpan(ref eReference, NibbleWidth);
+        Span<Vector128<ulong>> f = MemoryMarshal.CreateSpan(ref fReference, NibbleWidth);
 
         Vector128<ulong> extraB0 = Get(bWindow, 8, 2) ^ Get(bWindow, 5, 3) ^ Get(bWindow, 2, 1) ^ Get(bWindow, 7, 0);
         Vector128<ulong> extraB1 = Get(bWindow, 4, 3) ^ Get(bWindow, 7, 2) ^ Get(bWindow, 3, 0) ^ Get(bWindow, 4, 1);
@@ -373,16 +352,16 @@ internal static class CsaBitslicedStreamCipher
         Vector128<ulong> nextB1 = Get(bWindow, 6, 1) ^ Get(bWindow, 9, 1) ^ y[1];
         Vector128<ulong> nextB2 = Get(bWindow, 6, 2) ^ Get(bWindow, 9, 2) ^ y[2];
         Vector128<ulong> nextB3 = Get(bWindow, 6, 3) ^ Get(bWindow, 9, 3) ^ y[3];
-        if (includeInput)
+        if (TStep.IncludesInput)
         {
-            nextA0 ^= d[0] ^ inputA[0];
-            nextA1 ^= d[1] ^ inputA[1];
-            nextA2 ^= d[2] ^ inputA[2];
-            nextA3 ^= d[3] ^ inputA[3];
-            nextB0 ^= inputB[0];
-            nextB1 ^= inputB[1];
-            nextB2 ^= inputB[2];
-            nextB3 ^= inputB[3];
+            nextA0 ^= d[0] ^ inputA;
+            nextA1 ^= d[1] ^ Unsafe.Add(ref inputA, 1);
+            nextA2 ^= d[2] ^ Unsafe.Add(ref inputA, 2);
+            nextA3 ^= d[3] ^ Unsafe.Add(ref inputA, 3);
+            nextB0 ^= inputB;
+            nextB1 ^= Unsafe.Add(ref inputB, 1);
+            nextB2 ^= Unsafe.Add(ref inputB, 2);
+            nextB3 ^= Unsafe.Add(ref inputB, 3);
         }
 
         Vector128<ulong> previousF0 = f[0];
@@ -405,31 +384,99 @@ internal static class CsaBitslicedStreamCipher
         UpdateFAndE(1, previousF1, ref carry, z, e, f, q);
         UpdateFAndE(2, previousF2, ref carry, z, e, f, q);
         UpdateFAndE(3, previousF3, ref carry, z, e, f, q);
-
         r ^= q & (carry ^ r);
         registerOffset--;
-        Set(a, registerOffset, 0, nextA0);
-        Set(a, registerOffset, 1, nextA1);
-        Set(a, registerOffset, 2, nextA2);
-        Set(a, registerOffset, 3, nextA3);
-        Set(b, registerOffset, 0, nextB0);
-        Set(b, registerOffset, 1, nextB1);
-        Set(b, registerOffset, 2, nextB2);
-        Set(b, registerOffset, 3, nextB3);
-        x[0] = s1a;
-        x[1] = s2a;
-        x[2] = s3b;
-        x[3] = s4b;
-        y[0] = s3a;
-        y[1] = s4a;
-        y[2] = s5b;
-        y[3] = s6b;
-        z[0] = s5a;
-        z[1] = s6a;
-        z[2] = s1b;
-        z[3] = s2b;
-        p = s7a;
-        q = s7b;
+        Set(ref a, registerOffset, 0, nextA0);
+        Set(ref a, registerOffset, 1, nextA1);
+        Set(ref a, registerOffset, 2, nextA2);
+        Set(ref a, registerOffset, 3, nextA3);
+        Set(ref b, registerOffset, 0, nextB0);
+        Set(ref b, registerOffset, 1, nextB1);
+        Set(ref b, registerOffset, 2, nextB2);
+        Set(ref b, registerOffset, 3, nextB3);
+
+        // The window still refers to the prior register position, so the S-boxes can now write next state directly.
+        Vector128<ulong> fe = Get(aWindow, 3, 0);
+        Vector128<ulong> fa = Get(aWindow, 0, 2);
+        Vector128<ulong> fb = Get(aWindow, 5, 1);
+        Vector128<ulong> fc = Get(aWindow, 6, 3);
+        Vector128<ulong> fd = Get(aWindow, 8, 0);
+        Vector128<ulong> tmp0 = fa ^ (fb ^ ((((fa | fb) ^ fc) | (fc ^ fd)) ^ activeLanes));
+        Vector128<ulong> tmp1 = (fa | fb) ^ ((fc & (fa | (fb ^ fd))) ^ activeLanes);
+        Vector128<ulong> tmp2 = fa ^ ((fb & fd) ^ ((fa & fd) | fc));
+        Vector128<ulong> tmp3 = (fa & fc) ^ (fa ^ ((fa & fb) | fd));
+        x[0] = tmp0 ^ (fe & tmp1);
+        z[2] = tmp2 ^ (fe & tmp3);
+
+        fe = Get(aWindow, 1, 1);
+        fa = Get(aWindow, 2, 2);
+        fb = Get(aWindow, 5, 3);
+        fc = Get(aWindow, 6, 0);
+        fd = Get(aWindow, 8, 1);
+        tmp0 = fa ^ ((fb & (fc | fd)) ^ (fc ^ (fd ^ activeLanes)));
+        tmp1 = (fa & (fb ^ fd)) | ((fa | fb) & fc);
+        tmp2 = (fb & fd) ^ ((fa & fd) | (fb ^ (fc ^ activeLanes)));
+        tmp3 = (fa & fd) | (fa ^ (fb ^ (fc & fd)));
+        x[1] = tmp0 ^ (fe & tmp1);
+        z[3] = tmp2 ^ (fe & tmp3);
+
+        fe = Get(aWindow, 0, 3);
+        fa = Get(aWindow, 1, 0);
+        fb = Get(aWindow, 4, 1);
+        fc = Get(aWindow, 4, 3);
+        fd = Get(aWindow, 5, 2);
+        tmp0 = fa ^ (fb ^ ((fc & (fa | fd)) ^ fd));
+        tmp1 = (fa & fc) ^ ((fa ^ fd) | ((fb | fc) ^ (fd ^ activeLanes)));
+        tmp2 = fa ^ (((fb ^ fc) & fd) ^ fc);
+        y[0] = tmp0 ^ ((fe ^ activeLanes) & tmp1);
+        x[2] = tmp2 ^ fe;
+
+        fe = Get(aWindow, 2, 3);
+        fa = Get(aWindow, 0, 1);
+        fb = Get(aWindow, 1, 3);
+        fc = Get(aWindow, 3, 2);
+        fd = Get(aWindow, 7, 0);
+        tmp0 = fa ^ ((fc & (fa ^ fd)) | (fb ^ (fc | (fd ^ activeLanes))));
+        tmp1 = (fa & fb) ^ (fb ^ (((fa | fc) & fd) ^ fc));
+        tmp2 = fa ^ ((fb & fc) | (((fa & (fb ^ fd)) | fc) ^ fd));
+        y[1] = tmp0 ^ (fe & (tmp1 ^ tmp0));
+        x[3] = (y[1] ^ tmp2) ^ fe;
+
+        fe = Get(aWindow, 4, 2);
+        fa = Get(aWindow, 3, 3);
+        fb = Get(aWindow, 5, 0);
+        fc = Get(aWindow, 7, 1);
+        fd = Get(aWindow, 8, 2);
+        tmp0 = ((fa & (fb | fc)) ^ fb) | (((fa ^ fc) | fd) ^ activeLanes);
+        tmp1 = fb ^ ((fc ^ fd) & (fc ^ (fb | (fa ^ fd))));
+        tmp2 = (fa & fc) ^ (fb ^ ((fb | (fa ^ fc)) & fd));
+        tmp3 = ((fa ^ fb) & (fc ^ activeLanes)) | fd;
+        z[0] = tmp0 ^ (fe & tmp1);
+        y[2] = tmp2 ^ (fe & tmp3);
+
+        fe = Get(aWindow, 2, 1);
+        fa = Get(aWindow, 3, 1);
+        fb = Get(aWindow, 4, 0);
+        fc = Get(aWindow, 6, 2);
+        fd = Get(aWindow, 8, 3);
+        tmp0 = ((fa & fc) & fd) ^ ((fb & (fa | fd)) ^ fc);
+        tmp1 = ((fa ^ fc) & fd) ^ activeLanes;
+        tmp2 = (fa & (fb | fc)) ^ (fb ^ ((fb & fc) | fd));
+        tmp3 = fc & ((fa & (fb ^ fd)) ^ (fb | fd));
+        z[1] = tmp0 ^ (fe & tmp1);
+        y[3] = tmp2 ^ (fe & tmp3);
+
+        fe = Get(aWindow, 1, 2);
+        fa = Get(aWindow, 2, 0);
+        fb = Get(aWindow, 6, 1);
+        fc = Get(aWindow, 7, 2);
+        fd = Get(aWindow, 7, 3);
+        tmp0 = fb ^ ((fc & fd) | (fa ^ (fc ^ fd)));
+        tmp1 = (fb | fd) & ((fa & fc) | (fb ^ (fc ^ fd)));
+        tmp2 = (fa | fb) ^ ((fc & (fb | fd)) ^ fd);
+        tmp3 = fd | ((fa & fc) ^ activeLanes);
+        p = tmp0 ^ (fe & tmp1);
+        q = tmp2 ^ (fe & tmp3);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -461,6 +508,12 @@ internal static class CsaBitslicedStreamCipher
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Vector128<ulong> Get(VectorWindow values, int nibble, int bit)
+    {
+        return values.Get(nibble, bit);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static Vector128<ulong> Get(ReadOnlySpan<Vector128<ulong>> values, int nibble, int bit)
     {
         return Unsafe.Add(ref MemoryMarshal.GetReference(values), (nibble * NibbleWidth) + bit);
@@ -487,5 +540,42 @@ internal static class CsaBitslicedStreamCipher
     private static void Set(Span<Vector128<ulong>> values, int nibble, int bit, Vector128<ulong> value)
     {
         Unsafe.Add(ref MemoryMarshal.GetReference(values), (nibble * NibbleWidth) + bit) = value;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void Set(ref Vector128<ulong> values, int nibble, int bit, Vector128<ulong> value)
+    {
+        Unsafe.Add(ref values, (nibble * NibbleWidth) + bit) = value;
+    }
+
+    private readonly ref struct VectorWindow
+    {
+        private readonly ref Vector128<ulong> _reference;
+
+        public VectorWindow(ref Vector128<ulong> reference, int offset)
+        {
+            _reference = ref Unsafe.Add(ref reference, offset);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Vector128<ulong> Get(int nibble, int bit)
+        {
+            return Unsafe.Add(ref _reference, (nibble * NibbleWidth) + bit);
+        }
+    }
+
+    private interface IStreamStep
+    {
+        static abstract bool IncludesInput { get; }
+    }
+
+    private readonly struct InitializationStep : IStreamStep
+    {
+        public static bool IncludesInput => true;
+    }
+
+    private readonly struct NormalStep : IStreamStep
+    {
+        public static bool IncludesInput => false;
     }
 }

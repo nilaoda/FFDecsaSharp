@@ -122,9 +122,22 @@ internal static class CsaBlockCipher
         int blockCount,
         Span<byte> state)
     {
-        int offset = CsaKeySchedule.BlockScheduleLength;
         Span<byte> sBoxOutput = stackalloc byte[blockCount];
         Span<byte> permutationOutput = stackalloc byte[blockCount];
+        DecipherBlocksColumnMajor(blockSchedule, input, output, blockCount, state, sBoxOutput, permutationOutput);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    internal static void DecipherBlocksColumnMajor(
+        ReadOnlySpan<byte> blockSchedule,
+        ReadOnlySpan<byte> input,
+        Span<byte> output,
+        int blockCount,
+        Span<byte> state,
+        Span<byte> sBoxOutput,
+        Span<byte> permutationOutput)
+    {
+        int offset = CsaKeySchedule.BlockScheduleLength;
 
         for (int blockIndex = 0; blockIndex < blockCount; blockIndex++)
         {

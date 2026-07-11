@@ -435,3 +435,17 @@ Begin BitSlice foundation work:
 - Extended the column-major block-state XOR update with runtime-selected `Vector512<byte>`, `Vector256<byte>`, and `Vector128<byte>` paths. AVX-512 and AVX2 hosts can now update 64 or 32 packet columns per vector operation while Arm64 AdvSIMD continues to use the 16-byte path.
 - Apple M4 verification confirms the unavailable wider paths are eliminated without a measurable regression: 128-lane column-major block decipher measured `25.777 ns` per block versus the prior `25.755 ns` baseline.
 - The wider paths require the same `ffdecsa-compare-v1` measurement on AVX2 and AVX-512 hardware before reporting cross-platform throughput gains.
+
+### 128-Lane Managed Hot-Path Refinement
+
+- Added a 128-lane-only bit-plane decode path that caches the eight source planes for each byte, reads each 64-lane vector half once, and writes through validated by-reference addresses. The existing generic decoder remains responsible for partial batches.
+- Tightened the stream-step ABI to use fixed by-reference state and input planes. The normal stream step now carries no span lengths or input indexing; it consumes dummy references that are eliminated by its static input-mode specialization.
+- Reused column-major block S-box temporary columns across all 23 packet-pipeline iterations, and replaced repeated payload span slicing with direct validated by-reference eight-byte reads and writes.
+- Removed redundant full-payload re-planning after batch classification. The grouped path now clears the scrambling-control bits immediately before bitsliced decryption, preserving the scalar fallback behavior for one-packet tails.
+- A 64-bit dual-half circular-register prototype was verified against the scalar reference but measured `734 ns` per packet for 23 stream blocks, versus `514 ns` for the current `Vector128<ulong>` kernel. It was discarded; splitting the boolean network in two costs more than it saves in register pressure on Arm64.
+- Apple M4, .NET 10.0.8, Arm64 RyuJIT, serialized `ffdecsa-compare-v1` runs, all with `0 B` managed allocation:
+  - C#: median `1137 ns` per packet, `879,546` packets per second, `1294.7 Mbit/s` effective payload throughput;
+  - FFdecsa C `PARALLEL_128_2LONG`: `505.887 ns` per packet, `1,976,724` packets per second, `2909.7 Mbit/s`;
+  - both output checksums: `76DC3CFC07B7D0F2`.
+- The current managed path reaches approximately 44.5% of the calibrated reference C throughput. The remaining dominant cost is the 128-lane stream boolean network plus the scalar block S-box lookup, not allocation or packet-buffer copying.
+- `dotnet test src/FFDecsaSharp.slnx --no-restore -c Release -m:1` passed 73 tests.

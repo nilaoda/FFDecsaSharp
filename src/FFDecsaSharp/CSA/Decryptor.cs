@@ -147,17 +147,7 @@ public sealed class Decryptor
     {
         for (int groupIndex = 0; groupIndex < packetIndexes.Length; groupIndex++)
         {
-            int packetIndex = packetIndexes[groupIndex];
-            CsaPacketPlanningResult planningResult = CsaPacketPlanner.Prepare(
-                packets.Slice(packetIndex * TransportPacket.Size, TransportPacket.Size),
-                out CsaPacketWorkItem workItem);
-            if (planningResult != CsaPacketPlanningResult.NeedsDecryption
-                || workItem.KeyKind != keyKind
-                || workItem.PayloadOffset != 4
-                || workItem.PayloadLength != TransportPacket.Size - 4)
-            {
-                return false;
-            }
+            packets[(packetIndexes[groupIndex] * TransportPacket.Size) + 3] &= 0x3F;
         }
 
         if (!CsaBitslicedPacketCipher.TryDecryptFullPayloads(
@@ -176,7 +166,7 @@ public sealed class Decryptor
         return true;
     }
 
-    private static bool TryGetFullPayloadKeyKind(ReadOnlySpan<byte> packet, out CsaKeyKind keyKind)
+    private static bool TryGetFullPayloadKeyKind(Span<byte> packet, out CsaKeyKind keyKind)
     {
         keyKind = default;
 
