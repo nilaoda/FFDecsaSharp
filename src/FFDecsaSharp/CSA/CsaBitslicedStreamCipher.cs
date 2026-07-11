@@ -38,6 +38,15 @@ internal static class CsaBitslicedStreamCipher
         Span<ulong> e = stackalloc ulong[NibbleWidth];
         Span<ulong> f = stackalloc ulong[NibbleWidth];
 
+        a.Clear();
+        b.Clear();
+        x.Clear();
+        y.Clear();
+        z.Clear();
+        d.Clear();
+        e.Clear();
+        f.Clear();
+
         if (!BitSliceBlock.TryEncode(initializationBlocks, laneCount, initializationPlanes))
         {
             return false;

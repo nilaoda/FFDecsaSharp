@@ -282,5 +282,12 @@ Begin BitSlice foundation work:
 ### JIT Hot-Loop Tuning
 
 - Marked the stable batch block-round loop and bit-sliced stream generator with `AggressiveOptimization`.
-- The 64-packet benchmark improved from `3.485 us` to `3.395 us` per packet, approximately a 2.6% reduction, with `0 B` allocation.
+- The 64-packet benchmark improved from `3.485 us` to `3.395 us` per packet, approximately a 2.6% reduction, with `0 B` allocation before the deterministic-initialization correction below.
 - The optimization preserves the existing scalar and bit-sliced algorithms; it only guides Tier-1 JIT optimization of their hot loops.
+
+### Deterministic Bitsliced State Initialization
+
+- Explicitly cleared all bit-sliced stream registers before loading the key schedule, removing reliance on stack initialization behavior for A/B tail registers and auxiliary state.
+- The corrected 64-packet benchmark is `3.423 us` per packet with `0 B` allocation, a negligible difference from the pre-correction short-run sample.
+- The platform-neutral optimization phase has reached diminishing returns: combined lookup, cross-lane block rounds, work-buffer reuse, and JIT tuning reduced the 64-packet path from `6.112 us` to `3.423 us` per packet.
+- The next material performance opportunity is architecture-specific SIMD for the remaining cross-lane block S-box and state-update work.
