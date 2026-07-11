@@ -605,3 +605,16 @@ Interpretation:
 - The remaining gap to FFdecsa C is still the raw boolean-network op count (7 S-boxes × 32 steps × 23 blocks) plus block S-box work, not the small C# addressing wrappers around `Step`.
 - Do not revive S-box-first / full-local Step rewrites without a quieter multi-pair isolated stream BDN win **and** protocol e2e gain. Prefer new structural ideas (layout/algorithm), not more Step packaging.
 
+### Full-run virtual register history (no AdvanceRegisterWindow) — discarded
+
+Sized the A/B virtual-register banks for the entire init+stream run (`historyLength = 32 * (1 + blockCount)`, full-payload ≈ 736 nibbles × 4 planes) so `registerOffset` could walk backward continuously and the per-block 640 B × 2 live-register copy (`AdvanceRegisterWindow` / `CopyBlock`) could be removed.
+
+Correctness: 73 tests green.
+
+Isolated BDN `GenerateBitslicedStream` short-job paired sample (pair 1, quiet enough for a keep/reject signal):
+
+- HEAD (CopyBlock every 32 steps): **565.1 ns**
+- Full-history candidate: **649.1 ns** (~15% slower)
+
+Discarded after the first pair because the regression is larger than host noise. Larger stack-resident A/B banks (tens of KB per bank) hurt cache locality more than the eliminated mid-run copies save. Keep the 32-step window + `CopyBlock` live-register advance.
+
