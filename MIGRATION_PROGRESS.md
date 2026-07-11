@@ -691,3 +691,18 @@ Measurement (Apple M4, .NET 10.0.8):
 
 Keep as a small structural packaging win on the remaining decode residual.
 
+### Decode128 SWAR reverse-within-bytes instead of table lookups — discarded
+
+After the ReverseBits table + Decode128 packaging wins, tried replacing the 16 table lookups per 8-lane group with:
+
+`ReverseBitsWithinBytes(Transpose8By8(ReverseBitsWithinBytes(packed)))`
+
+Correctness: 73 tests green.
+
+Isolated BDN pair 1 vs packaging HEAD:
+
+- HEAD table path: **241.2 ns**
+- SWAR reverse-within-bytes: **302.5 ns** (~25% slower)
+
+Discarded. On this host the 256 B reverse table stays hotter than two full-width SWAR reverse stages around the transpose.
+
