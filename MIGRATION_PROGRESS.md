@@ -215,3 +215,16 @@ Begin BitSlice foundation work:
 
 - Added the FFdecsa `test_p_1_6` reference vector for one full CSA block plus six residue bytes behind an adaptation field.
 - Confirmed residue bytes are decrypted with the next stream output and the packet scrambling-control bits are cleared.
+
+### Batch API Foundation
+
+- Added public `Decryptor.TryDecryptPackets` for contiguous 188-byte packets with caller-provided result storage.
+- The method validates the complete batch layout before modifying any packet or result and stays allocation-free.
+- Added mixed clear, reserved, and scrambled batch coverage plus invalid-layout coverage.
+- Batch benchmark on Apple M4, .NET 10.0.8, Arm64 RyuJIT:
+  - Single packet: `14.40 us` per packet, `0 B` allocation.
+  - 32-packet batch: `14.58 us` per packet, `0 B` allocation.
+- The batch method currently preserves scalar per-packet execution. Its purpose is a stable API and correctness layer for a future cross-packet bit-sliced implementation.
+- `dotnet test src/FFDecsaSharp.slnx`
+  - Passed: 55
+  - Failed: 0

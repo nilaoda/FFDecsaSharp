@@ -95,6 +95,60 @@ public sealed class DecryptorTests
         Assert.True(packet[174..].SequenceEqual(expectedPayload));
     }
 
+    [Fact]
+    public void TryDecryptPacketsProcessesAContiguousMixedBatch()
+    {
+        ReadOnlySpan<byte> even = [0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x00];
+        ReadOnlySpan<byte> odd = [0x0F, 0x1E, 0x2D, 0x3C, 0x4B, 0x5A, 0x69, 0x78];
+        ReadOnlySpan<byte> expectedPrefix = [0x2D, 0x0A, 0x47, 0x20, 0x18, 0x11, 0x9C, 0x8A];
+        Span<byte> packets = stackalloc byte[188 * 3];
+        Span<PacketDecryptionResult> results = stackalloc PacketDecryptionResult[3];
+        Span<byte> clearPacket = packets[..188];
+        Span<byte> reservedPacket = packets.Slice(188, 188);
+        Span<byte> encryptedPacket = packets.Slice(376, 188);
+        clearPacket[0] = 0x47;
+        clearPacket[3] = 0x10;
+        reservedPacket[0] = 0x47;
+        reservedPacket[3] = 0x50;
+        encryptedPacket[0] = 0x47;
+        encryptedPacket[3] = 0x90;
+        for (int index = 0; index < 184; index++)
+        {
+            encryptedPacket[index + 4] = (byte)index;
+        }
+
+        Assert.True(ControlWords.TryCreate(even, odd, out ControlWords controlWords));
+        Assert.True(Decryptor.TryCreate(controlWords, out Decryptor? decryptor));
+
+        Assert.True(decryptor!.TryDecryptPackets(packets, results));
+
+        Assert.Equal(PacketDecryptionResult.Clear, results[0]);
+        Assert.Equal(PacketDecryptionResult.ReservedScramblingControl, results[1]);
+        Assert.Equal(PacketDecryptionResult.Decrypted, results[2]);
+        Assert.Equal(0x10, encryptedPacket[3]);
+        Assert.True(encryptedPacket.Slice(4, expectedPrefix.Length).SequenceEqual(expectedPrefix));
+    }
+
+    [Fact]
+    public void TryDecryptPacketsRejectsInvalidBatchLayoutWithoutProcessingPackets()
+    {
+        ReadOnlySpan<byte> even = [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07];
+        ReadOnlySpan<byte> odd = [0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x00];
+        Span<byte> packet = stackalloc byte[188];
+        Span<PacketDecryptionResult> results = stackalloc PacketDecryptionResult[1];
+        packet[0] = 0x47;
+        packet[3] = 0xD0;
+        results[0] = PacketDecryptionResult.Clear;
+
+        Assert.True(ControlWords.TryCreate(even, odd, out ControlWords controlWords));
+        Assert.True(Decryptor.TryCreate(controlWords, out Decryptor? decryptor));
+
+        Assert.False(decryptor!.TryDecryptPackets(packet[..^1], results));
+        Assert.False(decryptor.TryDecryptPackets(packet, Span<PacketDecryptionResult>.Empty));
+        Assert.Equal(PacketDecryptionResult.Clear, results[0]);
+        Assert.Equal(0xD0, packet[3]);
+    }
+
     [Theory]
     [InlineData(0x00, PacketDecryptionResult.Clear)]
     [InlineData(0x40, PacketDecryptionResult.ReservedScramblingControl)]

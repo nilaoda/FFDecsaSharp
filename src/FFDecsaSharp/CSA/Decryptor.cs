@@ -1,3 +1,5 @@
+using FFDecsaSharp.TransportStream;
+
 namespace FFDecsaSharp.CSA;
 
 /// <summary>
@@ -47,6 +49,34 @@ public sealed class Decryptor
         return CsaPacketCipher.TryDecryptPayload(controlWord, packet.Slice(workItem.PayloadOffset, workItem.PayloadLength))
             ? PacketDecryptionResult.Decrypted
             : PacketDecryptionResult.InvalidPacket;
+    }
+
+    /// <summary>
+    /// Attempts to decrypt a contiguous sequence of standard MPEG transport stream packets in place.
+    /// </summary>
+    /// <param name="packets">A buffer containing zero or more contiguous 188-byte packets.</param>
+    /// <param name="results">The destination for one result per packet.</param>
+    /// <returns><see langword="true"/> when the buffer layout and result capacity are valid; otherwise, <see langword="false"/>.</returns>
+    /// <remarks>When this method returns <see langword="false"/>, no packet is processed and <paramref name="results"/> is not modified.</remarks>
+    public bool TryDecryptPackets(Span<byte> packets, Span<PacketDecryptionResult> results)
+    {
+        if (packets.Length % TransportPacket.Size != 0)
+        {
+            return false;
+        }
+
+        int packetCount = packets.Length / TransportPacket.Size;
+        if (results.Length < packetCount)
+        {
+            return false;
+        }
+
+        for (int packetIndex = 0; packetIndex < packetCount; packetIndex++)
+        {
+            results[packetIndex] = Decrypt(packets.Slice(packetIndex * TransportPacket.Size, TransportPacket.Size));
+        }
+
+        return true;
     }
 
     private static PacketDecryptionResult MapPlanningResult(CsaPacketPlanningResult result)

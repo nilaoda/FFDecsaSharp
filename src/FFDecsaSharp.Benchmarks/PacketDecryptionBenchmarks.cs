@@ -9,8 +9,13 @@ namespace FFDecsaSharp.Benchmarks;
 [MemoryDiagnoser]
 public class PacketDecryptionBenchmarks
 {
+    private const int BatchSize = 32;
+
     private readonly byte[] _packet = new byte[188];
     private readonly byte[] _source = new byte[188];
+    private readonly byte[] _packetBatch = new byte[188 * BatchSize];
+    private readonly byte[] _sourceBatch = new byte[188 * BatchSize];
+    private readonly PacketDecryptionResult[] _batchResults = new PacketDecryptionResult[BatchSize];
     private readonly Decryptor _decryptor;
 
     /// <summary>
@@ -30,6 +35,10 @@ public class PacketDecryptionBenchmarks
         _source[0] = 0x47;
         _source[3] = 0xD0;
         encryptedPrefix.CopyTo(_source.AsSpan(4));
+        for (int packetIndex = 0; packetIndex < BatchSize; packetIndex++)
+        {
+            _source.CopyTo(_sourceBatch, packetIndex * _source.Length);
+        }
 
         if (!ControlWords.TryCreate(even, odd, out ControlWords controlWords)
             || !Decryptor.TryCreate(controlWords, out Decryptor? decryptor))
@@ -44,10 +53,21 @@ public class PacketDecryptionBenchmarks
     /// Copies a scrambled packet and decrypts it in place.
     /// </summary>
     /// <returns>The result produced by the decryptor.</returns>
-    [Benchmark]
+    [Benchmark(Baseline = true)]
     public PacketDecryptionResult DecryptPacket()
     {
         _source.CopyTo(_packet, 0);
         return _decryptor.Decrypt(_packet);
+    }
+
+    /// <summary>
+    /// Copies and decrypts a contiguous packet batch through the zero-allocation batch API.
+    /// </summary>
+    /// <returns><see langword="true"/> when every packet result was written.</returns>
+    [Benchmark(OperationsPerInvoke = BatchSize)]
+    public bool DecryptPacketBatch()
+    {
+        _sourceBatch.CopyTo(_packetBatch, 0);
+        return _decryptor.TryDecryptPackets(_packetBatch, _batchResults);
     }
 }
