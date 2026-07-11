@@ -796,3 +796,19 @@ Measurement (Apple M4, .NET 10.0.8), paired protocol `ffdecsa-compare-v1` (HEAD 
 
 Keep. This is a structural monomorphization win on the full interleaved path rather than another Step boolean-network packaging rewrite. Remaining gap is still dominated by raw 128-lane stream boolean ops and scalar block S-box work.
 
+### Direct DecipherBlocksColumnMajor128 call from monomorphic path — discarded
+
+Exposed `DecipherBlocksColumnMajor128` as `internal` and called it directly from `TryDecryptFullPayloads128` instead of going through the `DecipherBlocksColumnMajor` width dispatcher.
+
+Correctness: 73 tests green.
+
+Paired protocol (3 pairs HEAD then candidate + 1 C):
+
+- pair1: HEAD **816.5 ns** / CAND **898.3 ns** (+10.0%)
+- pair2: HEAD **868.6 ns** / CAND **830.6 ns** (-4.4%)
+- pair3: HEAD **823.3 ns** / CAND **832.0 ns** (+1.1%)
+- means: HEAD ≈ **836.1 ns**, CAND ≈ **853.6 ns**
+- FFdecsa C: **532.2 ns**
+
+No reliable win (host-noise dominated; pair1 regresses hard). The public dispatcher already branches to the 128-lane body for MaxLaneCount, so removing that branch is not a keep-grade structural cut. Restored HEAD.
+
