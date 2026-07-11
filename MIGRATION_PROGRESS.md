@@ -400,3 +400,14 @@ Begin BitSlice foundation work:
   - isolated column-major block decipher: `40.67 ns` to `28.59 ns` per block;
   - 128-packet copy-and-decrypt path: `1.594 us` to `1.320 us` per packet.
 - This is a 29.7% reduction for the block core and a 17.2% end-to-end improvement. The remaining next target is a width-specialized `Vector256`/`Vector512` backend for AVX2/AVX-512 hosts; Apple Silicon continues to use the 128-bit AdvSIMD backend.
+
+### Comparable C And C# Throughput Protocol
+
+- Added `ffdecsa-compare-v1`: a shared JSON output schema for the dependency-free C# throughput harness and an independently compiled upstream FFdecsa reference harness.
+- Both harnesses use the same deterministic 128-packet full-payload input, even control word, batch boundary, 5,000 warmup batches, and 30,000 measured batches. Source-buffer reset and FFdecsa's mutable cluster-list preparation remain outside the `decrypt_only` timing window.
+- The output includes batch and timing metadata, throughput, allocation count, and an FNV-1a checksum of the final decrypted batch. Results should only be compared when the protocol fields and checksum match.
+- Apple M4 serialized comparison after the bounds-check-free block optimization:
+  - C#: `1361.559 ns` per packet, `734,452.087` packets per second;
+  - FFdecsa C `PARALLEL_128_2LONG`: `502.333 ns` per packet, `1,990,713.116` packets per second;
+  - both output checksums: `76DC3CFC07B7D0F2`.
+- Under this normalized protocol, the managed implementation reaches about 37% of the reference C throughput. This supersedes the older comparison whose C# side included source copying and had a different measurement boundary.

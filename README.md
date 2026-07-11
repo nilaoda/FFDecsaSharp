@@ -54,11 +54,22 @@ Run the short performance suite with:
 dotnet run -c Release --project src/FFDecsaSharp.Benchmarks/FFDecsaSharp.Benchmarks.csproj -- --job short
 ```
 
+Run the directly comparable managed and FFdecsa reference throughput harnesses with:
+
+```sh
+dotnet run -c Release --project src/FFDecsaSharp.PerfHarness/FFDecsaSharp.PerfHarness.csproj
+tools/ffdecsa-compare/run-reference.sh
+```
+
+Both commands emit the same JSON schema. See `docs/BENCHMARK_PROTOCOL.md` for the timed scope and comparison rules.
+
 ## Layout
 
 - `src/FFDecsaSharp`: library and DVB-CSA implementation.
 - `src/FFDecsaSharp.Tests`: unit, differential, and FFdecsa compatibility tests.
 - `src/FFDecsaSharp.Benchmarks`: BenchmarkDotNet performance checks.
+- `src/FFDecsaSharp.PerfHarness`: dependency-free, machine-readable throughput harness.
+- `tools/ffdecsa-compare`: FFdecsa reference build and matching throughput harness.
 - `src/FFDecsaSharp.Gui`: reserved assembly for a future Avalonia front end.
 - `references/FFdecsa`: upstream source retained for calibration and compatibility study.
 
