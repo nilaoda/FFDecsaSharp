@@ -56,7 +56,7 @@ internal static class CsaBitslicedPacketCipher
                 Span<byte> chainingValue = chainingValues.Slice(lane * CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize);
                 ReadOnlySpan<byte> decipheredBlock = blockOutput.Slice(lane * CsaBlockCipher.BlockSize, CsaBlockCipher.BlockSize);
                 Span<byte> payload = packets.Slice((packetIndexes[lane] * TransportStream.TransportPacket.Size) + 4, PayloadLength);
-                ReadOnlySpan<byte> streamOutput = streamBlocks.Slice(((lane * StreamBlockCount) + blockIndex) * CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize);
+                ReadOnlySpan<byte> streamOutput = streamBlocks.Slice(((blockIndex * packetCount) + lane) * CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize);
 
                 for (int byteIndex = 0; byteIndex < CsaStreamCipher.BlockSize; byteIndex++)
                 {

@@ -63,7 +63,7 @@ public sealed class CsaBitslicedStreamCipherTests
             Assert.True(CsaStreamCipher.TryCreate(streamA, streamB, initializationBlocks.Slice(lane * CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize), out CsaStreamCipher scalarCipher));
             for (int block = 0; block < blockCount; block++)
             {
-                Assert.True(scalarCipher.TryGenerate(expected.Slice(((lane * blockCount) + block) * CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize)));
+                Assert.True(scalarCipher.TryGenerate(expected.Slice(((block * laneCount) + lane) * CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize)));
             }
         }
 

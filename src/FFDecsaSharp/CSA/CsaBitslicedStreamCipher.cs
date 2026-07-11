@@ -108,7 +108,7 @@ internal static class CsaBitslicedStreamCipher
             for (int lane = 0; lane < laneCount; lane++)
             {
                 groupOutput.Slice(lane * CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize)
-                    .CopyTo(destination.Slice(((lane * blockCount) + blockIndex) * CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize));
+                    .CopyTo(destination.Slice(((blockIndex * laneCount) + lane) * CsaStreamCipher.BlockSize, CsaStreamCipher.BlockSize));
             }
         }
 
