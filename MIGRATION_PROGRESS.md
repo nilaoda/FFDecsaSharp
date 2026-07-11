@@ -631,3 +631,16 @@ Isolated BDN `DecipherBlocksColumnMajor` short-job pair 1:
 
 Clear regression. Keep the unrolled populate. On this path the JIT-friendly unroll still wins over a compact loop.
 
+### Word-wise column-major load/store for 128-lane block path — discarded
+
+Replaced the eight scalar byte loads/stores per lane in `DecipherBlocksColumnMajor128` with one `ulong` word read/write plus shift packing/unpacking.
+
+Correctness: 73 tests green.
+
+Isolated BDN `DecipherBlocksColumnMajor` short-job, 3 paired runs:
+
+- HEAD: 22.42 / 22.27 / 22.53 ns (mean ≈ **22.41 ns**)
+- Word pack/unpack: 23.05 / 22.56 / 22.39 ns (mean ≈ **22.67 ns**)
+
+No reliable win (slightly slower on average). Keep the direct per-byte scatter/gather form.
+
