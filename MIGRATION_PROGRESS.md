@@ -1038,3 +1038,39 @@ Interpretation:
 
 Current HEAD remains `9eed197`. Working tree code restored; this section records the discarded experiments.
 
+### Split BlockTransform ushort into separate S-box/permutation byte tables — discarded
+
+Replaced the packed `ushort` transform table (`sbox<<8 | perm`) with direct `BlockSBox` + a separate 256-entry permutation table, removing the per-lane `>> 8` in `PopulateTransformOutputs128` and scalar block paths.
+
+Correctness: 73 tests green.
+
+Isolated BDN `DecipherBlocksColumnMajor` ShortRun pair 1:
+
+- HEAD **22.75 ns** / CAND **25.02 ns** (+10.0%)
+
+Clear regression on the first pair; stopped further pairs. Restored HEAD. A single ushort load that yields both outputs remains hotter than two independent byte-table loads per lane on this path.
+
+### 16-lane chunked populate+update fusion — discarded
+
+Fused each block round into eight 16-lane chunks: `PopulateTransformOutputs16` immediately followed by the matching `Vector128` state-update block, hypothesizing better L1 locality on the 256 B sbox/perm temps.
+
+Correctness: 73 tests green.
+
+Isolated BDN `DecipherBlocksColumnMajor` ShortRun pair 1:
+
+- HEAD **23.27 ns** / CAND **25.83 ns** (+11.0%)
+
+Clear regression; stopped further pairs. Restored HEAD. Full-width populate then full-width vector updates remains hotter than interleaved 16-lane chunks (temps already L1-resident; extra call/loop structure hurts).
+
+### 16-column ring state for 128-lane block path — discarded
+
+Replaced the 64-column virtual block history (`packetCount*64` bytes) in `DecipherBlocksColumnMajor128` with a 16-slot modular column ring (2 KB) that only keeps the live 9-wide window plus spare slots. Absolute offsets became `(base+k) & 15`.
+
+Correctness: 73 tests green.
+
+Isolated BDN `DecipherBlocksColumnMajor` ShortRun pair 1:
+
+- HEAD **22.18 ns** / CAND **25.22 ns** (+13.7%)
+
+Clear regression; stopped further pairs. Restored HEAD. Contiguous linear virtual history with simple `offset--` addressing stays hotter than modular ring indexing on Arm64 (masking/non-contiguous column bases hurt the unrolled Vector128 updates more than the smaller working set helps).
+
