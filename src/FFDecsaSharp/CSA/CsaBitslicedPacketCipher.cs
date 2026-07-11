@@ -47,7 +47,7 @@ internal static class CsaBitslicedPacketCipher
 
         for (int blockIndex = 0; blockIndex < StreamBlockCount; blockIndex++)
         {
-            CsaBlockCipher.DecipherBlocks(controlWord.BlockSchedule, chainingValues, blockOutput, packetCount, blockState);
+            CsaBlockCipher.DecipherBlocksColumnMajor(controlWord.BlockSchedule, chainingValues, blockOutput, packetCount, blockState);
 
             for (int lane = 0; lane < packetCount; lane++)
             {
@@ -66,7 +66,7 @@ internal static class CsaBitslicedPacketCipher
             }
         }
 
-        CsaBlockCipher.DecipherBlocks(
+        CsaBlockCipher.DecipherBlocksColumnMajor(
             controlWord.BlockSchedule,
             chainingValues,
             blockOutput,

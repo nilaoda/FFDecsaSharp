@@ -110,4 +110,34 @@ public sealed class CsaBlockCipherTests
 
         Assert.True(actual.SequenceEqual(expected));
     }
+
+    [Fact]
+    public void ColumnMajorBatchCoreMatchesIndependentBlockDeciphering()
+    {
+        const int blockCount = 64;
+        ReadOnlySpan<byte> controlWord = [0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x00];
+        Span<byte> schedule = stackalloc byte[CsaKeySchedule.BlockScheduleLength];
+        Span<byte> input = stackalloc byte[blockCount * CsaBlockCipher.BlockSize];
+        Span<byte> expected = stackalloc byte[blockCount * CsaBlockCipher.BlockSize];
+        Span<byte> actual = stackalloc byte[blockCount * CsaBlockCipher.BlockSize];
+        Span<byte> state = stackalloc byte[blockCount * 64];
+
+        for (int index = 0; index < input.Length; index++)
+        {
+            input[index] = (byte)((index * 53 + 19) & 0xFF);
+        }
+
+        Assert.True(CsaKeySchedule.TryCreateBlockSchedule(controlWord, schedule));
+        for (int blockIndex = 0; blockIndex < blockCount; blockIndex++)
+        {
+            CsaBlockCipher.DecipherBlock(
+                schedule,
+                input.Slice(blockIndex * CsaBlockCipher.BlockSize, CsaBlockCipher.BlockSize),
+                expected.Slice(blockIndex * CsaBlockCipher.BlockSize, CsaBlockCipher.BlockSize));
+        }
+
+        CsaBlockCipher.DecipherBlocksColumnMajor(schedule, input, actual, blockCount, state);
+
+        Assert.True(actual.SequenceEqual(expected));
+    }
 }

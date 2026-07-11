@@ -331,3 +331,18 @@ Begin BitSlice foundation work:
 
 - Added `README.md` with current implementation scope, minimal single-packet and batch API examples, local build/test commands, benchmark invocation, and repository layout.
 - Documented that the library currently supports decryption only and that the GUI assembly remains reserved for future work.
+
+### Transposed Batch Block Core
+
+- Revisited the batch block cipher using the same state organization as FFdecsa: state is stored by byte position and lane rather than by lane and state position.
+- Applied 64-bit SWAR updates to groups of eight adjacent lanes after each scalar block S-box lookup; this preserves the required table semantics while reducing state-update traffic.
+- Added a 64-lane differential test and isolated benchmarks for both batch block-core layouts.
+- Apple M4 short-run results, 0 B managed allocation:
+  - previous lane-major interleaved block core: `75.17 ns` per block;
+  - transposed column-major SWAR block core: `34.04 ns` per block.
+- Integrated the faster core only into full-payload bit-sliced batches. Full test coverage remains intact:
+  - same-key 64-packet batch: `2.290 us` per packet, reduced from `3.430 us`;
+  - alternating-key 64-packet batch: `2.806 us` per packet, reduced from `3.955 us`.
+- The remaining primary cost is the bit-sliced stream kernel at `1.359 us` per packet for 23 generated stream blocks; NativeAOT alone is not expected to close this gap.
+- `dotnet build src/FFDecsaSharp.slnx --no-restore -m:1` completed with 0 warnings and 0 errors.
+- `dotnet test src/FFDecsaSharp.slnx --no-build` passed 64 tests.

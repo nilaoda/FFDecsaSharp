@@ -25,6 +25,7 @@ public class PacketDecryptionBenchmarks
     private readonly byte[] _blockOutput = new byte[CsaBlockCipher.BlockSize];
     private readonly byte[] _blockInputBatch = new byte[CsaBlockCipher.BlockSize * BitSlice.BitSliceBlock.MaxLaneCount];
     private readonly byte[] _blockOutputBatch = new byte[CsaBlockCipher.BlockSize * BitSlice.BitSliceBlock.MaxLaneCount];
+    private readonly byte[] _blockStateBatch = new byte[64 * BitSlice.BitSliceBlock.MaxLaneCount];
     private readonly byte[] _bitslicedInitializationBlocks = new byte[CsaStreamCipher.BlockSize * BitSlice.BitSliceBlock.MaxLaneCount];
     private readonly byte[] _bitslicedOutput = new byte[CsaStreamCipher.BlockSize * 23 * BitSlice.BitSliceBlock.MaxLaneCount];
     private readonly Decryptor _decryptor;
@@ -147,5 +148,33 @@ public class PacketDecryptionBenchmarks
                 _blockInputBatch.AsSpan(lane * CsaBlockCipher.BlockSize, CsaBlockCipher.BlockSize),
                 _blockOutputBatch.AsSpan(lane * CsaBlockCipher.BlockSize, CsaBlockCipher.BlockSize));
         }
+    }
+
+    /// <summary>
+    /// Deciphers 64 blocks with the stable interleaved batch core.
+    /// </summary>
+    [Benchmark(OperationsPerInvoke = BitSlice.BitSliceBlock.MaxLaneCount)]
+    public void DecipherBlocksInterleaved()
+    {
+        CsaBlockCipher.DecipherBlocks(
+            _blockSchedule,
+            _blockInputBatch,
+            _blockOutputBatch,
+            BitSlice.BitSliceBlock.MaxLaneCount,
+            _blockStateBatch);
+    }
+
+    /// <summary>
+    /// Deciphers 64 blocks with the experimental column-major SWAR core.
+    /// </summary>
+    [Benchmark(OperationsPerInvoke = BitSlice.BitSliceBlock.MaxLaneCount)]
+    public void DecipherBlocksColumnMajor()
+    {
+        CsaBlockCipher.DecipherBlocksColumnMajor(
+            _blockSchedule,
+            _blockInputBatch,
+            _blockOutputBatch,
+            BitSlice.BitSliceBlock.MaxLaneCount,
+            _blockStateBatch);
     }
 }

@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace FFDecsaSharp.CSA;
 
@@ -109,6 +110,85 @@ internal static class CsaBlockCipher
         {
             state.Slice((blockIndex * StateLength) + offset, BlockSize)
                 .CopyTo(output.Slice(blockIndex * BlockSize, BlockSize));
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    internal static void DecipherBlocksColumnMajor(
+        ReadOnlySpan<byte> blockSchedule,
+        ReadOnlySpan<byte> input,
+        Span<byte> output,
+        int blockCount,
+        Span<byte> state)
+    {
+        int offset = CsaKeySchedule.BlockScheduleLength;
+        Span<byte> sBoxOutput = stackalloc byte[BitSlice.BitSliceBlock.MaxLaneCount];
+        Span<byte> permutationOutput = stackalloc byte[BitSlice.BitSliceBlock.MaxLaneCount];
+
+        for (int blockIndex = 0; blockIndex < blockCount; blockIndex++)
+        {
+            for (int byteIndex = 0; byteIndex < BlockSize; byteIndex++)
+            {
+                state[((offset + byteIndex) * blockCount) + blockIndex] = input[(blockIndex * BlockSize) + byteIndex];
+            }
+        }
+
+        ReadOnlySpan<ushort> transform = BlockTransform;
+        for (int round = CsaKeySchedule.BlockScheduleLength - 1; round >= 0; round--)
+        {
+            int sBoxInputOffset = (offset + 6) * blockCount;
+            for (int blockIndex = 0; blockIndex < blockCount; blockIndex++)
+            {
+                ushort transformed = transform[blockSchedule[round] ^ state[sBoxInputOffset + blockIndex]];
+                sBoxOutput[blockIndex] = (byte)(transformed >> 8);
+                permutationOutput[blockIndex] = (byte)transformed;
+            }
+
+            offset--;
+            int stateOffset = offset * blockCount;
+            int stateOffset2 = (offset + 2) * blockCount;
+            int stateOffset3 = (offset + 3) * blockCount;
+            int stateOffset4 = (offset + 4) * blockCount;
+            int stateOffset6 = (offset + 6) * blockCount;
+            int stateOffset8 = (offset + 8) * blockCount;
+            int updateIndex = 0;
+            ref byte stateReference = ref MemoryMarshal.GetReference(state);
+            ref byte sBoxReference = ref MemoryMarshal.GetReference(sBoxOutput);
+            ref byte permutationReference = ref MemoryMarshal.GetReference(permutationOutput);
+
+            for (; updateIndex <= blockCount - sizeof(ulong); updateIndex += sizeof(ulong))
+            {
+                ulong state0 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref stateReference, stateOffset8 + updateIndex))
+                    ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref sBoxReference, updateIndex));
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset + updateIndex), state0);
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset6 + updateIndex),
+                    Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref stateReference, stateOffset6 + updateIndex))
+                    ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref permutationReference, updateIndex)));
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset4 + updateIndex),
+                    Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref stateReference, stateOffset4 + updateIndex)) ^ state0);
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset3 + updateIndex),
+                    Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref stateReference, stateOffset3 + updateIndex)) ^ state0);
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset2 + updateIndex),
+                    Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref stateReference, stateOffset2 + updateIndex)) ^ state0);
+            }
+
+            for (; updateIndex < blockCount; updateIndex++)
+            {
+                byte state0 = (byte)(state[stateOffset8 + updateIndex] ^ sBoxOutput[updateIndex]);
+                state[stateOffset + updateIndex] = state0;
+                state[stateOffset6 + updateIndex] ^= permutationOutput[updateIndex];
+                state[stateOffset4 + updateIndex] ^= state0;
+                state[stateOffset3 + updateIndex] ^= state0;
+                state[stateOffset2 + updateIndex] ^= state0;
+            }
+        }
+
+        for (int blockIndex = 0; blockIndex < blockCount; blockIndex++)
+        {
+            for (int byteIndex = 0; byteIndex < BlockSize; byteIndex++)
+            {
+                output[(blockIndex * BlockSize) + byteIndex] = state[((offset + byteIndex) * blockCount) + blockIndex];
+            }
         }
     }
 
