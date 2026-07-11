@@ -324,25 +324,150 @@ internal static class CsaBlockCipher
             int stateOffset6 = stateOffset + (6 * ColumnStride);
             int stateOffset8 = stateOffset + (8 * ColumnStride);
 
-            // Arm64 path: eight Vector128 updates cover all 128 lanes.
-            for (int updateIndex = 0; updateIndex < LaneCount; updateIndex += Vector128<byte>.Count)
+            // Arm64 path: fully unrolled eight Vector128 updates cover all 128 lanes.
             {
-                Vector128<byte> state0 = Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset8 + updateIndex))
-                    ^ Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref sBoxReference, updateIndex));
-                Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset + updateIndex), state0);
+                Vector128<byte> state0 = Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset8 + 0))
+                    ^ Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref sBoxReference, 0));
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset + 0), state0);
                 Unsafe.WriteUnaligned(
-                    ref Unsafe.Add(ref stateReference, stateOffset6 + updateIndex),
-                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset6 + updateIndex))
-                    ^ Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref permutationReference, updateIndex)));
+                    ref Unsafe.Add(ref stateReference, stateOffset6 + 0),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset6 + 0))
+                    ^ Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref permutationReference, 0)));
                 Unsafe.WriteUnaligned(
-                    ref Unsafe.Add(ref stateReference, stateOffset4 + updateIndex),
-                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset4 + updateIndex)) ^ state0);
+                    ref Unsafe.Add(ref stateReference, stateOffset4 + 0),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset4 + 0)) ^ state0);
                 Unsafe.WriteUnaligned(
-                    ref Unsafe.Add(ref stateReference, stateOffset3 + updateIndex),
-                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset3 + updateIndex)) ^ state0);
+                    ref Unsafe.Add(ref stateReference, stateOffset3 + 0),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset3 + 0)) ^ state0);
                 Unsafe.WriteUnaligned(
-                    ref Unsafe.Add(ref stateReference, stateOffset2 + updateIndex),
-                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset2 + updateIndex)) ^ state0);
+                    ref Unsafe.Add(ref stateReference, stateOffset2 + 0),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset2 + 0)) ^ state0);
+            }
+            {
+                Vector128<byte> state0 = Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset8 + 16))
+                    ^ Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref sBoxReference, 16));
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset + 16), state0);
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref stateReference, stateOffset6 + 16),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset6 + 16))
+                    ^ Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref permutationReference, 16)));
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref stateReference, stateOffset4 + 16),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset4 + 16)) ^ state0);
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref stateReference, stateOffset3 + 16),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset3 + 16)) ^ state0);
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref stateReference, stateOffset2 + 16),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset2 + 16)) ^ state0);
+            }
+            {
+                Vector128<byte> state0 = Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset8 + 32))
+                    ^ Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref sBoxReference, 32));
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset + 32), state0);
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref stateReference, stateOffset6 + 32),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset6 + 32))
+                    ^ Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref permutationReference, 32)));
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref stateReference, stateOffset4 + 32),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset4 + 32)) ^ state0);
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref stateReference, stateOffset3 + 32),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset3 + 32)) ^ state0);
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref stateReference, stateOffset2 + 32),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset2 + 32)) ^ state0);
+            }
+            {
+                Vector128<byte> state0 = Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset8 + 48))
+                    ^ Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref sBoxReference, 48));
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset + 48), state0);
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref stateReference, stateOffset6 + 48),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset6 + 48))
+                    ^ Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref permutationReference, 48)));
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref stateReference, stateOffset4 + 48),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset4 + 48)) ^ state0);
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref stateReference, stateOffset3 + 48),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset3 + 48)) ^ state0);
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref stateReference, stateOffset2 + 48),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset2 + 48)) ^ state0);
+            }
+            {
+                Vector128<byte> state0 = Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset8 + 64))
+                    ^ Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref sBoxReference, 64));
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset + 64), state0);
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref stateReference, stateOffset6 + 64),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset6 + 64))
+                    ^ Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref permutationReference, 64)));
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref stateReference, stateOffset4 + 64),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset4 + 64)) ^ state0);
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref stateReference, stateOffset3 + 64),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset3 + 64)) ^ state0);
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref stateReference, stateOffset2 + 64),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset2 + 64)) ^ state0);
+            }
+            {
+                Vector128<byte> state0 = Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset8 + 80))
+                    ^ Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref sBoxReference, 80));
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset + 80), state0);
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref stateReference, stateOffset6 + 80),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset6 + 80))
+                    ^ Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref permutationReference, 80)));
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref stateReference, stateOffset4 + 80),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset4 + 80)) ^ state0);
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref stateReference, stateOffset3 + 80),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset3 + 80)) ^ state0);
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref stateReference, stateOffset2 + 80),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset2 + 80)) ^ state0);
+            }
+            {
+                Vector128<byte> state0 = Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset8 + 96))
+                    ^ Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref sBoxReference, 96));
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset + 96), state0);
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref stateReference, stateOffset6 + 96),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset6 + 96))
+                    ^ Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref permutationReference, 96)));
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref stateReference, stateOffset4 + 96),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset4 + 96)) ^ state0);
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref stateReference, stateOffset3 + 96),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset3 + 96)) ^ state0);
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref stateReference, stateOffset2 + 96),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset2 + 96)) ^ state0);
+            }
+            {
+                Vector128<byte> state0 = Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset8 + 112))
+                    ^ Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref sBoxReference, 112));
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset + 112), state0);
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref stateReference, stateOffset6 + 112),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset6 + 112))
+                    ^ Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref permutationReference, 112)));
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref stateReference, stateOffset4 + 112),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset4 + 112)) ^ state0);
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref stateReference, stateOffset3 + 112),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset3 + 112)) ^ state0);
+                Unsafe.WriteUnaligned(
+                    ref Unsafe.Add(ref stateReference, stateOffset2 + 112),
+                    Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset2 + 112)) ^ state0);
             }
         }
 

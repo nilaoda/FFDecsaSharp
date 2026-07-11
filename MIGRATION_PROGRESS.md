@@ -841,3 +841,31 @@ Isolated BDN `DecipherBlocksColumnMajor` ShortRun paired samples:
 
 No keep-grade win; available pairs are at best noise and pair1 already regresses versus HEAD scalar scatter/gather. On this host the existing fixed-stride per-lane load/store remains hotter than the bulk int transpose stages. Restored HEAD.
 
+### Fully unrolled 128-lane Vector128 block state updates (kept)
+
+Unrolled the Arm64 `for (updateIndex = 0; updateIndex < 128; updateIndex += 16)` state-update loop in `DecipherBlocksColumnMajor128` into eight constant-offset `Vector128<byte>` update blocks. The 128-lane S-box populate path was already fully unrolled; this removes the residual 8-iteration loop around the per-round column XORs.
+
+Correctness:
+
+- `dotnet test src/FFDecsaSharp.slnx -c Release -m:1` — 73 passed.
+- Protocol checksum `76DC3CFC07B7D0F2`, `managed_allocated_bytes=0`, `verified=true`.
+
+Measurement (Apple M4, .NET 10.0.8):
+
+Isolated BDN `DecipherBlocksColumnMajor` ShortRun, 3 paired runs:
+
+- pair1: HEAD **23.01 ns** / CAND **22.28 ns** (-3.17%)
+- pair2: HEAD **23.21 ns** / CAND **22.09 ns** (-4.83%)
+- pair3: HEAD **23.11 ns** / CAND **22.09 ns** (-4.41%)
+- means: HEAD ≈ **23.11 ns**, CAND ≈ **22.15 ns** (~-4.1% isolated block)
+
+Paired protocol `ffdecsa-compare-v1` (HEAD then candidate × 3 + 1 C; host noisy this window):
+
+- pair1: HEAD **978.1 ns** / CAND **846.8 ns** (-13.4%) — HEAD sample is a thermal/noise outlier
+- pair2: HEAD **819.4 ns** / CAND **808.9 ns** (-1.3%)
+- pair3: HEAD **866.0 ns** / CAND **815.6 ns** (-5.8%)
+- FFdecsa C: **550.0 ns**
+- Candidate-only confirm samples after keep: **834.6 / 926.3 / 824.6 ns** (best ≈ **824.6 ns**)
+
+Keep. Isolated block signal is clean and multi-pair; e2e direction matches though absolute protocol numbers remain host-noise sensitive. Remaining gap to C is still dominated by the 128-lane stream boolean network and scalar block S-box table lookups.
+
