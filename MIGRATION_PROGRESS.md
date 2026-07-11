@@ -706,3 +706,16 @@ Isolated BDN pair 1 vs packaging HEAD:
 
 Discarded. On this host the 256 B reverse table stays hotter than two full-width SWAR reverse stages around the transpose.
 
+### Decode128 word accumulation then bulk store — discarded
+
+Rebuilt `Decode128` to accumulate each lane's 8-byte word in a `stackalloc ulong[128]` buffer (OR-in reversed bytes by shift) and finish with 128 contiguous `WriteUnaligned` stores, avoiding strided single-byte stores into lane-major output.
+
+Correctness: 73 tests green.
+
+Isolated BDN pair 1 vs packaging HEAD:
+
+- HEAD strided byte stores: **240.7 ns**
+- Word accumulation: **307.4 ns** (~28% slower)
+
+Discarded. The extra 1 KB stack buffer, clear, and RMW ORs outweigh the strided-store cost on this path. Keep the direct per-byte lane stores.
+
