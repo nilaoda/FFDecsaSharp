@@ -490,3 +490,22 @@ Notes:
 - Do not revive bulk transpose / fused decode-chain without a measured isolated decode microbenchmark win **and** protocol e2e gain.
 
 Host noise observation during this phase: consecutive `ffdecsa-compare-v1` runs drifted (managed ≈`1230–1330 ns`, C ≈`530–557 ns`) versus earlier quieter samples (managed ≈`1131 ns`, C ≈`502 ns`). Relative prototype comparisons used paired runs; absolute ns should not be over-interpreted while the machine is thermally/noisy.
+
+### Stream kernel specialization (`Step` / register window) — discarded
+
+Attempted focused rewrites of the 128-lane stream boolean network after Phase 1–3.
+
+1. **`StepFull` (full-lane NormalStep specialization)**
+   - Dropped the init-input branch and replaced every `^ activeLanes` with `~` / `~x` forms for the full-128 decrypt path only.
+   - Correctness: 73 tests, checksum `76DC3CFC07B7D0F2`, 0 managed allocation.
+   - Paired protocol samples in a noisy host window (HEAD ≈`1240–1465 ns`, StepFull ≈`1235–1263 ns`) showed **no reliable e2e win**; earlier single-run samples were also within noise. Discarded to avoid code duplication without a measured gain.
+
+2. **`GenerateStreamBlockFull` (32-step stream-block helper)**
+   - Hoisted the 8×4 step loop into one helper that writes all 64 output planes via `Unsafe.Add` on plane refs.
+   - Correctness OK; protocol sample ≈`1278 ns` with no improvement over HEAD in the same window. Discarded.
+
+Interpretation:
+
+- The remaining gap to FFdecsa C is still dominated by the boolean-network arithmetic itself and block S-box work, not by the small ABI/loop packaging around `Step`.
+- Host thermal/noise currently swings managed protocol results by ~200 ns; only changes that beat HEAD by a clear margin across paired runs should be kept.
+- Do not revive `StepFull` / stream-block helper packaging without quieter paired measurements and an isolated stream BDN win.
