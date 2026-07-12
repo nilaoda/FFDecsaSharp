@@ -1147,3 +1147,22 @@ Investigated replacing `BitSliceBlock.Decode128`'s 128 scalar 8x8 transposes and
 Implemented the six-stage `Vector128<ulong>` transform as an isolated prototype, including reversal of the per-byte plane order and per-`ulong` bit order. The 128-lane encode/decode round-trip still failed: its output does not differ from the current layout by a simple fixed byte reordering. FFdecsa's `PARALLEL_128_2LONG` plane/lane convention is coupled to its inverse input transpose, while the managed implementation's `TryEncode` and stream output use a different high-bit-first lane layout.
 
 The prototype was removed before any hot-path measurement; Release tests are back to 73/73. Making this viable requires an end-to-end representation change across encode, active-lane masks, stream output ordering, and decode, then paired protocol validation. That is a high-risk data-layout rewrite, not a local decode substitution, so it is deferred behind shared-DAG stream S-box synthesis and wider-ISA validation.
+
+### Explicit cross-output S-box CSE — discarded
+
+Tested explicit reuse of six exact four-input subexpressions already present across the two output branches of the stream S-boxes: `fa | fb` (S1), `fa & fd` (S2), `fa ^ fc` (S5), and `fc ^ fd`, `fa & fc`, `fb | fd` (S7). This is a semantics-preserving shared-DAG subset, reducing the source-level boolean-operation count by six per `Step`.
+
+Correctness: 73 Release tests passed; protocol checksum remained `76DC3CFC07B7D0F2`, with 0 managed allocation.
+
+Isolated `GenerateBitslicedStream` short BenchmarkDotNet samples were mixed and overlapped:
+
+- candidate: `223.29 ns` (99.9% CI `219.25–227.32 ns`)
+- HEAD: `226.94 ns` (99.9% CI `221.55–232.33 ns`)
+
+The end-to-end `C → HEAD → C` protocol sequence did not reproduce a stable gain:
+
+- candidate: `747.19 ns/packet`
+- HEAD: `756.41 ns/packet`
+- candidate: `764.45 ns/packet`
+
+The candidate average is effectively equal to HEAD once the thermal/order drift is included. Restored HEAD. This confirms that manual extraction of small existing common nodes is below the keep threshold, whether because RyuJIT already eliminates much of it or because the additional live vector values offset the reduced gates. Future shared-DAG work must discover a materially different network, not merely expose obvious repeated terms.
