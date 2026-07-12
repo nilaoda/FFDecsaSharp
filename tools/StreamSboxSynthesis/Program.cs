@@ -31,12 +31,12 @@ static List<List<Node>> BuildCatalog(int maxCost)
     var byCost = Enumerable.Range(0, maxCost + 1).Select(static _ => new List<Node>()).ToList();
     var best = new Dictionary<ushort, Node>();
 
-    Add(0x0000, "0");
-    Add(All, "1");
-    Add(0xAAAA, "fa");
-    Add(0xCCCC, "fb");
-    Add(0xF0F0, "fc");
-    Add(0xFF00, "fd");
+    AddSource(0x0000, "0");
+    AddSource(All, "1");
+    AddSource(0xAAAA, "fa");
+    AddSource(0xCCCC, "fb");
+    AddSource(0xF0F0, "fc");
+    AddSource(0xFF00, "fd");
 
     for (int cost = 1; cost <= maxCost; cost++)
     {
@@ -57,11 +57,11 @@ static List<List<Node>> BuildCatalog(int maxCost)
                         continue;
                     }
 
-                    Add((ushort)(left.Value & right.Value), $"({left.Expr}&{right.Expr})");
-                    Add((ushort)(left.Value | right.Value), $"({left.Expr}|{right.Expr})");
-                    Add((ushort)(left.Value ^ right.Value), $"({left.Expr}^{right.Expr})");
-                    Add((ushort)(left.Value & ~right.Value), $"({left.Expr}&~{right.Expr})");
-                    Add((ushort)(right.Value & ~left.Value), $"({right.Expr}&~{left.Expr})");
+                    Add((ushort)(left.Value & right.Value), $"({left.Expr}&{right.Expr})", left, right);
+                    Add((ushort)(left.Value | right.Value), $"({left.Expr}|{right.Expr})", left, right);
+                    Add((ushort)(left.Value ^ right.Value), $"({left.Expr}^{right.Expr})", left, right);
+                    Add((ushort)(left.Value & ~right.Value), $"({left.Expr}&~{right.Expr})", left, right);
+                    Add((ushort)(right.Value & ~left.Value), $"({right.Expr}&~{left.Expr})", right, left);
                 }
             }
         }
@@ -69,14 +69,22 @@ static List<List<Node>> BuildCatalog(int maxCost)
 
     return byCost;
 
-    void Add(ushort value, string expr)
+    void AddSource(ushort value, string expr)
+    {
+        if (best.TryAdd(value, new Node(value, expr, 0, null, null)))
+        {
+            byCost[0].Add(best[value]);
+        }
+    }
+
+    void Add(ushort value, string expr, Node left, Node right)
     {
         if (best.ContainsKey(value))
         {
             return;
         }
 
-        var node = new Node(value, expr, expr.Count(static c => c is '&' or '|' or '^'));
+        var node = new Node(value, expr, left.Cost + right.Cost + 1, left, right);
         best.Add(value, node);
         byCost[node.Cost].Add(node);
     }
@@ -118,22 +126,22 @@ static IEnumerable<Candidate> FindCandidates(IReadOnlyList<ushort> targets, IRea
 static Branch? FindBestBranch(Node shared, ushort target, IReadOnlyDictionary<ushort, Node> best)
 {
     var candidates = new List<Branch>();
-    if (best.TryGetValue((ushort)(target ^ shared.Value), out Node? xor))
+    if (best.TryGetValue((ushort)(target ^ shared.Value), out Node? xor) && !xor.Contains(shared.Value))
     {
         candidates.Add(new Branch(xor.Cost + 1, true, $"shared^{xor.Expr}"));
     }
 
-    if ((target & ~shared.Value) == 0 && best.TryGetValue(target, out Node? and))
+    if ((target & ~shared.Value) == 0 && best.TryGetValue(target, out Node? and) && !and.Contains(shared.Value))
     {
         candidates.Add(new Branch(and.Cost + 1, true, $"shared&{and.Expr}"));
         ushort mask = (ushort)(shared.Value & ~target);
-        if (best.TryGetValue(mask, out Node? andNot))
+        if (best.TryGetValue(mask, out Node? andNot) && !andNot.Contains(shared.Value))
         {
             candidates.Add(new Branch(andNot.Cost + 1, true, $"shared&~{andNot.Expr}"));
         }
     }
 
-    if ((shared.Value & ~target) == 0 && best.TryGetValue(target, out Node? or))
+    if ((shared.Value & ~target) == 0 && best.TryGetValue(target, out Node? or) && !or.Contains(shared.Value))
     {
         candidates.Add(new Branch(or.Cost + 1, true, $"shared|{or.Expr}"));
     }
@@ -213,6 +221,9 @@ static (ushort A, ushort B) Evaluate(int sbox, ushort fe, ushort fa, ushort fb, 
     }
 }
 
-sealed record Node(ushort Value, string Expr, int Cost);
+sealed record Node(ushort Value, string Expr, int Cost, Node? Left, Node? Right)
+{
+    public bool Contains(ushort value) => Value == value || (Left?.Contains(value) ?? false) || (Right?.Contains(value) ?? false);
+}
 sealed record Branch(int Cost, bool UsesShared, string Description);
 sealed record Candidate(Node Shared, int TotalCost, string Description);
