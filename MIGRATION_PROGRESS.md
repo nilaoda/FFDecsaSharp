@@ -1074,3 +1074,43 @@ Isolated BDN `DecipherBlocksColumnMajor` ShortRun pair 1:
 
 Clear regression; stopped further pairs. Restored HEAD. Contiguous linear virtual history with simple `offset--` addressing stays hotter than modular ring indexing on Arm64 (masking/non-contiguous column bases hurt the unrolled Vector128 updates more than the smaller working set helps).
 
+
+### Lower-op stream S-box boolean resynthesis (AndNot-portable) — discarded
+
+Re-synthesized the 4-input stream S-box temporary functions with a logic.c-style multi-level search that adds portable `AndNot` (`x & ~y`) as a 1-cost primitive (maps to Arm64 `BIC` and x86 `ANDN`/`andn` via `Vector128.AndNot`). Free `OrNot` was measured separately but rejected as the primary cost model because it is not single-op on x86.
+
+AndNot-only improvements found vs FFdecsa/current levels (sum of 26 non-trivial tmp nets: old 143 → new 138, Δ−5):
+
+- s1 tmp3: 5→4 — `(fa & ~((fb & ~fd) ^ fc)) ^ fd`
+- s4 tmp1: 6→5 — `(fb & ~fa) ^ (((fa | fc) & fd) ^ fc)`
+- s4 tmp2: 7→6 — `(fb | (fc & ~fd)) ^ (fa | ((fb ^ fd) & ~fc))`
+- s6 tmp0: 6→5 — `(fb & (fa | fd)) ^ (fc & ~(fa & fd))`
+
+Patched only those four expressions into the fused 128-lane `Step` boolean network (same evaluation order / register window / Span ABI). Correctness: 73 tests green; protocol checksum `76DC3CFC07B7D0F2`, `managed_allocated_bytes=0`.
+
+Isolated BDN `GenerateBitslicedStream` ShortRun, 3 alternating HEAD/CAND pairs:
+
+| Pair | HEAD | CAND |
+|-----:|-----:|-----:|
+| 1 | 288.8 ns | 260.5 ns |
+| 2 | 267.2 ns | 282.3 ns |
+| 3 | 289.9 ns | 274.5 ns |
+| mean | ≈ **282.0 ns** | ≈ **272.4 ns** (~3% directionally)
+
+Protocol `ffdecsa-compare-v1` 3 alternating pairs (same host window; C ref **644.7 ns**):
+
+| Pair | HEAD | CAND |
+|-----:|-----:|-----:|
+| 1 | 999.9 ns | 1001.2 ns |
+| 2 | 1036.9 ns | 978.1 ns |
+| 3 | 978.5 ns | 996.8 ns |
+| mean | ≈ **1005.1 ns** | ≈ **992.0 ns** |
+
+No keep-grade multi-pair win: isolated stream is mixed (pair 2 regresses) and e2e stays inside host noise (~±30–50 ns). Restored HEAD. A ~3% theoretical gate cut on a subset of S-box tmps is real but too small / too scheduling-sensitive to show up cleanly on this managed path.
+
+Interpretation:
+
+- Portable lower-op rewrites of individual FFdecsa tmp nets are near saturation; free-`OrNot` synthesis can claim ~Δ−13 levels but is not portable to x86 as single ops.
+- Do not keep partial AndNot rewrites without a clear multi-pair isolated **and** e2e win.
+- Next stream-kernel avenues still need either joint multi-output (shared-DAG across a whole 5→2 S-box) synthesis with a larger measured cut, or a different plane/register representation — not more packaging.
+
