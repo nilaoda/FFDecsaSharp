@@ -1166,3 +1166,13 @@ The end-to-end `C → HEAD → C` protocol sequence did not reproduce a stable g
 - candidate: `764.45 ns/packet`
 
 The candidate average is effectively equal to HEAD once the thermal/order drift is included. Restored HEAD. This confirms that manual extraction of small existing common nodes is below the keep threshold, whether because RyuJIT already eliminates much of it or because the additional live vector values offset the reduced gates. Future shared-DAG work must discover a materially different network, not merely expose obvious repeated terms.
+
+### Arm64 backend instruction-selection gap — confirmed
+
+Captured optimized Apple M4 assembly for both implementations.
+
+- .NET 10.0.8 RyuJIT emits `Step<NormalStep>` as a 1,656-byte method using AdvSIMD `eor` / `and` / `orr` instructions. It has no vector stack spills, so simple live-range changes cannot recover a spill penalty.
+- Apple Clang's optimized FFdecsa `PARALLEL_128_2LONG` binary uses AdvSIMD plus ARM SHA-3 boolean instructions, including `eor3.16b`, `bcax.16b`, `bic.16b`, `orn.16b`, and `bsl.16b`. The binary contains 82 static `eor3` / `bcax` instructions in the optimized decrypt path.
+- The current .NET 10 reference intrinsics expose `Xor3` only under SVE. Apple M4 does not provide SVE, and there is no public non-SVE SHA-3 `eor3` / `bcax` intrinsic available to this pure-managed implementation.
+
+The reference measurement in this inspection window was `502.34 ns/packet`; the managed baseline remains around `750–805 ns/packet` depending on host state. This is a concrete backend advantage for C that source-level `Vector128` expression reshaping cannot reproduce today. A native Arm64 helper could expose these instructions, but that changes the pure-managed scope and must be treated as a separate, opt-in backend rather than a migration optimization.
