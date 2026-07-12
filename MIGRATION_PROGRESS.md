@@ -1408,6 +1408,22 @@ x64. The magnitude of the x64 win remains unmeasured until AVX2/AVX-512
 hardware is available; do not claim cross-architecture benchmark parity from
 the Arm64 result alone.
 
+### Post-layout C reference revalidation
+
+Re-ran the normalized protocol in serialized `C# -> C -> C# -> C` order after
+the layout commit. Every sample used 128 packets, 5,000 warmup batches, 30,000
+measurement batches, decrypt-only timing, and checksum `76DC3CFC07B7D0F2`.
+
+| Pair | C# ns/packet | C# Mbit/s | FFdecsa C ns/packet | C Mbit/s | C# throughput |
+|-----:|-------------:|----------:|--------------------:|---------:|--------------:|
+| 1 | 511.804 | 2876.102 | 497.662 | 2957.829 | 97.24% |
+| 2 | 512.710 | 2871.019 | 495.785 | 2969.031 | 96.70% |
+
+The two-sample average is approximately **512.257 ns/packet**,
+**2873.561 Mbit/s**, and **97.0%** of the FFdecsa C throughput in the same
+host window. This supersedes the earlier approximate C comparison, which was
+measured before the layout change.
+
 ### Research status after this session
 
 Kept:
