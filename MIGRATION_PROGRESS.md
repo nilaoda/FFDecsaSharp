@@ -1196,3 +1196,9 @@ Measurements on Apple M4 / .NET 10.0.8:
 - protocol samples: candidate `741.57 / 750.31 / 751.49 ns/packet`, HEAD `759.05 / 749.28 ns/packet`. The average end-to-end direction is a modest ~**0.8%** improvement amid host drift, while the isolated stream signal is clear.
 
 Kept because the codegen change is directly verified, semantics are identical, the isolated hot path has a clear multi-nanosecond gain, and fallback code preserves non-Arm behavior. A follow-up that explicitly expanded the four F updates did produce additional select instructions but grew the Step body and regressed the isolated mean (`219.03 ns`); it was discarded.
+
+### Multi-output S-box synthesis tooling — started
+
+Added `tools/StreamSboxSynthesis`, an offline .NET tool that derives each stream S-box's four `fe` cofactor truth tables from the maintained C# boolean networks. It enumerates bounded four-input expressions over `AND`, `OR`, `XOR`, and portable `AND NOT`, then reports common nodes usable by at least two cofactors.
+
+At formula cost 4, the initial catalog contains 8,312 unique truth functions. The current scorer is deliberately a bounded candidate generator, not a global-optimality proof: it only recognizes a shared node plus a one-gate composition with an independently enumerated residual. Candidates remain research artifacts until they are checked against all 32 S-box inputs and demonstrate a paired stream benchmark improvement.
