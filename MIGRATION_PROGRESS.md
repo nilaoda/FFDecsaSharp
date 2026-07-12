@@ -1139,3 +1139,11 @@ Research notes:
 - Packaging-only Step/register-window rewrites are exhausted for this phase. Multiple variants were correctness-green but failed to produce keep-grade e2e gains.
 - The next plausible research target is a constrained, shared-DAG synthesis for each complete 5→2 S-box using the existing `fe`-mux structure: search for common 4-input subexpressions shared by both output bits, not independent one-output formulas. A keep candidate should show a clear isolated `GenerateBitslicedStream` win across paired runs before protocol measurement.
 - Secondary target: cross-platform measurement of the existing `Vector256`/`Vector512` block-state update paths on AVX2/AVX-512 hardware. Apple Silicon cannot validate those wider paths.
+
+### FFdecsa-style full 64x128 output transpose — deferred
+
+Investigated replacing `BitSliceBlock.Decode128`'s 128 scalar 8x8 transposes and byte-reversal lookups with FFdecsa's six-stage, in-place `trasp64_128_88cw` matrix transpose. This looks attractive because the stream output is decoded once for every 8-byte payload block.
+
+Implemented the six-stage `Vector128<ulong>` transform as an isolated prototype, including reversal of the per-byte plane order and per-`ulong` bit order. The 128-lane encode/decode round-trip still failed: its output does not differ from the current layout by a simple fixed byte reordering. FFdecsa's `PARALLEL_128_2LONG` plane/lane convention is coupled to its inverse input transpose, while the managed implementation's `TryEncode` and stream output use a different high-bit-first lane layout.
+
+The prototype was removed before any hot-path measurement; Release tests are back to 73/73. Making this viable requires an end-to-end representation change across encode, active-lane masks, stream output ordering, and decode, then paired protocol validation. That is a high-risk data-layout rewrite, not a local decode substitution, so it is deferred behind shared-DAG stream S-box synthesis and wider-ISA validation.
