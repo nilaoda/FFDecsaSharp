@@ -1,3 +1,4 @@
+using System.Numerics;
 using System.Globalization;
 
 const ushort All = ushort.MaxValue;
@@ -25,12 +26,33 @@ if (args.Length >= 1 && string.Equals(args[0], "pla", StringComparison.OrdinalIg
     return 0;
 }
 
+if (args.Length >= 1 && string.Equals(args[0], "beam", StringComparison.OrdinalIgnoreCase))
+{
+    int sboxArg = args.Length > 1 && int.TryParse(args[1], out int parsedSbox) ? parsedSbox : 0;
+    int maxGates = args.Length > 2 && int.TryParse(args[2], out int parsedGates) ? parsedGates : 18;
+    int beamWidth = args.Length > 3 && int.TryParse(args[3], out int parsedBeam) ? parsedBeam : 64;
+    if (sboxArg is < 0 or > 7 || maxGates is < 4 or > 28 || beamWidth is < 4 or > 512)
+    {
+        Console.Error.WriteLine("Usage: beam [sbox:0=all|1..7] [max-gates:4..28] [beam-width:4..512]");
+        return 1;
+    }
+
+    int first = sboxArg == 0 ? 0 : sboxArg - 1;
+    int last = sboxArg == 0 ? 6 : sboxArg - 1;
+    for (int sbox = first; sbox <= last; sbox++)
+    {
+        RunBeamSearch(sbox, maxGates, beamWidth);
+    }
+
+    return 0;
+}
+
 bool xorPairMode = args.Length >= 1 && string.Equals(args[0], "xor2", StringComparison.OrdinalIgnoreCase);
 int costArgumentIndex = xorPairMode ? 1 : 0;
 int maxCost = args.Length > costArgumentIndex && int.TryParse(args[costArgumentIndex], out int parsed) ? parsed : 4;
 if (maxCost is < 1 or > 7)
 {
-    Console.Error.WriteLine("Usage: dotnet run --project tools/StreamSboxSynthesis [max-cost: 1..7] | xor2 [max-cost: 1..7]");
+    Console.Error.WriteLine("Usage: dotnet run --project tools/StreamSboxSynthesis [max-cost: 1..7] | xor2 [max-cost: 1..7] | beam [sbox] [max-gates] [beam]");
     return 1;
 }
 
@@ -42,14 +64,19 @@ Console.WriteLine($"catalog_nodes={best.Count} max_formula_cost={maxCost}");
 for (int sbox = 0; sbox < 7; sbox++)
 {
     ushort[] targets = GetCofactors(sbox);
-    Console.WriteLine($"sbox={sbox + 1} outputs={GetOutputNames(sbox)} cofactors={string.Join(',', targets.Select(static value => value.ToString("X4", CultureInfo.InvariantCulture)))}");
+    int outputMergeCost = GetOutputMergeCost(targets);
+    int sourceGateCost = GetCurrentNetworkGateCount(sbox);
+    Console.WriteLine($"sbox={sbox + 1} outputs={GetOutputNames(sbox)} source_gates={sourceGateCost} cofactor_merge_gates={outputMergeCost} cofactors={string.Join(',', targets.Select(static value => value.ToString("X4", CultureInfo.InvariantCulture)))}");
 
     IEnumerable<Candidate> candidates = xorPairMode
         ? FindXorPairCandidates(targets, best)
         : FindCandidates(targets, best);
-    foreach (Candidate candidate in candidates.Take(8))
+    foreach (Candidate candidate in candidates
+        .Where(candidate => candidate.TotalCost + outputMergeCost < sourceGateCost)
+        .Take(8))
     {
-        Console.WriteLine($"  cofactor_total={candidate.TotalCost} shared={candidate.Shared.Expr} shared_cost={candidate.Shared.Cost} branches={candidate.Description}");
+        int completeCost = candidate.TotalCost + outputMergeCost;
+        Console.WriteLine($"  complete_total={completeCost} cofactor_total={candidate.TotalCost} shared={candidate.Shared.Expr} shared_cost={candidate.Shared.Cost} branches={candidate.Description}");
     }
 }
 
@@ -316,6 +343,256 @@ static XorBranch? FindBestXorBranch(Node left, Node right, ushort target, IReadO
     return result;
 }
 
+
+static void RunBeamSearch(int sbox, int maxGates, int beamWidth)
+{
+    ushort[] targets = GetCofactors(sbox);
+    int mergeCost = GetOutputMergeCost(targets);
+    int sourceGates = GetCurrentNetworkGateCount(sbox);
+    Console.WriteLine(
+        $"beam sbox={sbox + 1} outputs={GetOutputNames(sbox)} source_gates={sourceGates} merge={mergeCost} max_gates={maxGates} beam={beamWidth} targets={string.Join(',', targets.Select(static value => value.ToString("X4", CultureInfo.InvariantCulture)))}");
+
+    // Seed with constants and inputs. Cost is number of binary gates in the DAG.
+    var seeds = new List<DagNode>
+    {
+        new(0x0000, "0", 0),
+        new(All, "1", 0),
+        new(0xAAAA, "fa", 0),
+        new(0xCCCC, "fb", 0),
+        new(0xF0F0, "fc", 0),
+        new(0xFF00, "fd", 0),
+    };
+
+    var beam = new List<DagState> { new(seeds, 0) };
+    int bestCover = int.MaxValue;
+    string? bestDescription = null;
+
+    for (int depth = 0; depth <= maxGates; depth++)
+    {
+        foreach (DagState state in beam)
+        {
+            int cover = CoverCost(state.Nodes, targets);
+            if (cover >= int.MaxValue / 8)
+            {
+                continue;
+            }
+
+            // Only treat exact DAG covers (all targets present) as real complete networks.
+            // one-gate residual estimates are used only for beam ranking.
+            if (cover != 0)
+            {
+                continue;
+            }
+
+            int complete = state.GateCount + mergeCost;
+            if (complete < bestCover)
+            {
+                bestCover = complete;
+                bestDescription = DescribeCover(state.Nodes, targets);
+                Console.WriteLine(
+                    $"  exact_complete={bestCover} gates={state.GateCount} residual_cover=0 delta={bestCover - sourceGates} cover={bestDescription}");
+            }
+        }
+
+        if (depth == maxGates)
+        {
+            break;
+        }
+
+        var next = new List<DagState>();
+        var seen = new HashSet<string>();
+        foreach (DagState state in beam)
+        {
+            int n = state.Nodes.Count;
+            // Expand only pairs involving the most recently introduced non-seed node when available,
+            // plus a bounded all-pairs pass over the last few nodes to recover sharing.
+            int start = state.GateCount < 4 ? 0 : Math.Max(0, n - 8);
+            for (int i = start; i < n; i++)
+            {
+                for (int j = 0; j < n; j++)
+                {
+                    if (i == j)
+                    {
+                        continue;
+                    }
+
+                    DagNode left = state.Nodes[i];
+                    DagNode right = state.Nodes[j];
+                    TryAdd(state, left, right, (ushort)(left.Value & right.Value), $"({left.Expr}&{right.Expr})", next, seen, targets, sourceGates, mergeCost);
+                    TryAdd(state, left, right, (ushort)(left.Value | right.Value), $"({left.Expr}|{right.Expr})", next, seen, targets, sourceGates, mergeCost);
+                    TryAdd(state, left, right, (ushort)(left.Value ^ right.Value), $"({left.Expr}^{right.Expr})", next, seen, targets, sourceGates, mergeCost);
+                    TryAdd(state, left, right, (ushort)(left.Value & ~right.Value), $"({left.Expr}&~{right.Expr})", next, seen, targets, sourceGates, mergeCost);
+                }
+            }
+        }
+
+        // Keep states with lowest (gateCount + residual cover), then complete.
+        var ranked = next
+            .Select(state => (state, cover: CoverCost(state.Nodes, targets)))
+            .OrderBy(item => item.cover)
+            .ThenBy(item => item.state.GateCount)
+            .ThenBy(item => item.cover + item.state.GateCount)
+            .Take(beamWidth)
+            .ToList();
+        beam = ranked.Select(item => item.state).ToList();
+        if (beam.Count == 0)
+        {
+            break;
+        }
+
+        int bestResidual = ranked[0].cover;
+        if (bestResidual < 100 || depth == 0 || (depth + 1) % 4 == 0)
+        {
+            int presentCount = 0;
+            foreach (ushort target in targets)
+            {
+                if (beam[0].Nodes.Any(node => node.Value == target))
+                {
+                    presentCount++;
+                }
+            }
+
+            Console.WriteLine($"  depth={depth + 1} beam={beam.Count} best_residual={bestResidual} present={presentCount}/{targets.Length} nodes={beam[0].Nodes.Count}");
+        }
+    }
+
+    Console.WriteLine(
+        bestDescription is null
+            ? $"  no_exact_cover under max_gates={maxGates}"
+            : $"  final_exact_complete={bestCover} source_gates={sourceGates} delta={bestCover - sourceGates}");
+}
+
+static void TryAdd(
+    DagState state,
+    DagNode left,
+    DagNode right,
+    ushort value,
+    string expr,
+    List<DagState> next,
+    HashSet<string> seen,
+    ushort[] targets,
+    int sourceGates,
+    int mergeCost) // targets/sourceGates/mergeCost reserved for future pruning
+{
+    if (state.Nodes.Any(node => node.Value == value))
+    {
+        return;
+    }
+
+    var nodes = new List<DagNode>(state.Nodes.Count + 1);
+    nodes.AddRange(state.Nodes);
+    nodes.Add(new DagNode(value, expr, state.GateCount + 1));
+    int gateCount = state.GateCount + 1;
+    // Fingerprint: sorted present values.
+    string key = string.Join(',', nodes.Select(static node => node.Value).OrderBy(static value => value));
+    if (!seen.Add(key))
+    {
+        return;
+    }
+
+    next.Add(new DagState(nodes, gateCount));
+}
+
+
+static int CoverCost(IReadOnlyList<DagNode> nodes, IReadOnlyList<ushort> targets)
+{
+    // Exact cover ranks 0. Otherwise guide the beam by Hamming distance to targets
+    // and prefer states where a target is one gate away.
+    int total = 0;
+    foreach (ushort target in targets)
+    {
+        total += ResidualCost(target, nodes);
+    }
+
+    return total;
+}
+
+static int ResidualCost(ushort target, IReadOnlyList<DagNode> nodes)
+{
+    int minHamming = 16;
+    for (int i = 0; i < nodes.Count; i++)
+    {
+        ushort value = nodes[i].Value;
+        if (value == target)
+        {
+            return 0;
+        }
+
+        int hamming = BitOperations.PopCount((uint)(value ^ target));
+        if (hamming < minHamming)
+        {
+            minHamming = hamming;
+        }
+    }
+
+    for (int i = 0; i < nodes.Count; i++)
+    {
+        ushort left = nodes[i].Value;
+        for (int j = 0; j < nodes.Count; j++)
+        {
+            ushort right = nodes[j].Value;
+            if ((ushort)(left ^ right) == target
+                || (ushort)(left & right) == target
+                || (ushort)(left | right) == target
+                || (ushort)(left & ~right) == target)
+            {
+                return 1;
+            }
+        }
+    }
+
+    // Scale Hamming into a soft residual so nearer functions rank first.
+    return 10 + minHamming;
+}
+
+static string DescribeCover(IReadOnlyList<DagNode> nodes, IReadOnlyList<ushort> targets)
+{
+    return string.Join("; ", targets.Select(target => DescribeTarget(target, nodes)));
+}
+
+static string DescribeTarget(ushort target, IReadOnlyList<DagNode> nodes)
+{
+    foreach (DagNode node in nodes)
+    {
+        if (node.Value == target)
+        {
+            return node.Expr;
+        }
+    }
+
+    for (int i = 0; i < nodes.Count; i++)
+    {
+        for (int j = 0; j < nodes.Count; j++)
+        {
+            ushort left = nodes[i].Value;
+            ushort right = nodes[j].Value;
+            string l = nodes[i].Expr;
+            string r = nodes[j].Expr;
+            if ((ushort)(left ^ right) == target)
+            {
+                return $"({l}^{r})";
+            }
+
+            if ((ushort)(left & right) == target)
+            {
+                return $"({l}&{r})";
+            }
+
+            if ((ushort)(left | right) == target)
+            {
+                return $"({l}|{r})";
+            }
+
+            if ((ushort)(left & ~right) == target)
+            {
+                return $"({l}&~{r})";
+            }
+        }
+    }
+
+    return $"?{target:X4}";
+}
+
 static ushort[] GetCofactors(int sbox)
 {
     ushort fa = 0xAAAA;
@@ -338,6 +615,40 @@ static string GetOutputNames(int sbox)
         4 => "z[0],y[2]",
         5 => "z[1],y[3]",
         6 => "p,q",
+        _ => throw new ArgumentOutOfRangeException(nameof(sbox)),
+    };
+}
+
+static int GetOutputMergeCost(IReadOnlyList<ushort> cofactors)
+{
+    return GetMuxCost(cofactors[0], cofactors[1]) + GetMuxCost(cofactors[2], cofactors[3]);
+}
+
+static int GetMuxCost(ushort whenFeZero, ushort whenFeOne)
+{
+    ushort delta = (ushort)(whenFeZero ^ whenFeOne);
+    return delta switch
+    {
+        0 => 0,
+        All => 1,
+        _ => 2,
+    };
+}
+
+static int GetCurrentNetworkGateCount(int sbox)
+{
+    // Count the current portable C# boolean operations, including each output merge.
+    // AdvSIMD may lower some muxes to a single BSL, so this is deliberately a
+    // cross-platform source-level screen rather than an ISA-specific cycle model.
+    return sbox switch
+    {
+        0 => 23,
+        1 => 19,
+        2 => 17,
+        3 => 20,
+        4 => 21,
+        5 => 18,
+        6 => 19,
         _ => throw new ArgumentOutOfRangeException(nameof(sbox)),
     };
 }
@@ -405,3 +716,5 @@ sealed record Node(ushort Value, string Expr, int Cost, Node? Left, Node? Right)
 sealed record Branch(int Cost, bool UsesShared, string Description);
 sealed record Candidate(Node Shared, int TotalCost, string Description);
 sealed record XorBranch(int Cost, int LeftUses, int RightUses, string Description);
+sealed record DagNode(ushort Value, string Expr, int IntroducedAtGate);
+sealed record DagState(List<DagNode> Nodes, int GateCount);

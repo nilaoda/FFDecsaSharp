@@ -1231,3 +1231,165 @@ Apple M4 / .NET 10.0.8 / Arm64 RyuJIT measurements with matching short Benchmark
 - `ffdecsa-compare-v1`, 128 decrypt-only packets: immediately adjacent baseline **747.898 ns/packet**; candidate **626.361 ns/packet**; approximately **16.2% faster**.
 
 This is a local data-layout realization of the existing block transform, not a native backend. It is the first retained improvement that materially reduces the scalar block-table contribution; stream S-box synthesis remains a separate research track.
+
+### Stream S-box synthesis scoring: complete_total filter — tooling kept
+
+Updated `tools/StreamSboxSynthesis` so reported candidates include the final `fe`
+merge cost (`complete_total = cofactor_total + mux_cost`) and are filtered to
+those strictly below the maintained portable source-gate counts for each S-box
+(S1..S7: 23/19/17/20/21/18/19). This avoids over-ranking cofactor-only totals
+that ignore muxes and existing hand-tuned sharing.
+
+At formula cost 6 the only under-threshold candidate remains S1
+(`complete_total=22`, shared `(((fa|fd)&~fb)^(fc&~(fa&fd)))`). No other S-box
+produced a complete cut under the current one-shared-node residual model.
+
+### Shared four-output S1 DAG rewrite — discarded
+
+Patched S1 (`x[0], z[2]`) to the cost-5/6 explorer candidate: one shared node
+used by all four `fe` cofactors, then two `Select` merges. Exact match over all
+32 inputs; Release tests 73/73; protocol checksum `76DC3CFC07B7D0F2`.
+
+Isolated BDN `GenerateBitslicedStream` ShortRun, 3 alternating HEAD/CAND pairs
+(Apple M4, .NET 10.0.8):
+
+| Pair | HEAD | CAND |
+|-----:|-----:|-----:|
+| 1 | 240.8 ns | 222.2 ns |
+| 2 | 222.1 ns | 221.6 ns |
+| 3 | 234.6 ns | 221.2 ns |
+| mean | ≈ **232.5 ns** | ≈ **221.7 ns** |
+
+Protocol `ffdecsa-compare-v1` pairs in the same window:
+
+| Pair | HEAD | CAND |
+|-----:|-----:|-----:|
+| 1 | 639.4 ns | 638.8 ns |
+| 2 | 633.7 ns | 632.0 ns |
+| 3 | 644.1 ns | 638.6 ns |
+| mean | ≈ **639.1 ns** | ≈ **636.5 ns** |
+
+Interpretation: the theoretical portable gate cut is only Δ−1 on S1, and the
+isolated stream means are polluted by high-variance HEAD samples (pairs 1 and 3
+have large StdDev). End-to-end deltas stay inside host noise (~1–5 ns). Restored
+HEAD. Do not keep single-S-box rewrites at the Δ−1 level without a quiet multi-
+pair isolated win that also shows up in protocol.
+
+### Expand remaining `tmp ^ (fe & delta)` merges to `Select` — discarded
+
+Rewrote the remaining FFdecsa-style XOR-and merges in `Step` to the equivalent
+`Select(fe, tmp ^ delta, tmp)` form (and the inverted S3 merge to
+`Select(fe, tmp0, tmp0 ^ tmp1)`), aiming to lower more sites to Arm64 `BSL`
+alongside the already-kept F-update selects. Correctness: 73/73 Release tests.
+
+Isolated stream + protocol ShortRun / harness, 3 alternating pairs:
+
+| Pair | stream HEAD | stream CAND | protocol HEAD | protocol CAND |
+|-----:|------------:|------------:|--------------:|--------------:|
+| 1 | 217.6 ns | 221.2 ns | 628.4 ns | 630.9 ns |
+| 2 | 232.4 ns | 216.8 ns | 682.7 ns | 634.4 ns |
+| 3 | 217.9 ns | 245.2 ns | 630.7 ns | 658.2 ns |
+| mean | ≈ **222.6 ns** | ≈ **227.7 ns** | ≈ **647.3 ns** | ≈ **641.2 ns** |
+
+No keep-grade signal: stream often regresses or swings with host noise, and the
+protocol mean is dominated by a single noisy HEAD sample rather than a
+reproducible candidate win. Restored HEAD. Expanding every fe-merge to
+`Select` without a verified reduction in Step size / spills is not free; the
+previous kept BSL change already covers the profitable F-update sites.
+
+### Next research targets after these discards
+
+1. Deeper multi-output synthesis: residuals beyond one catalog gate, or an
+   exact multi-output DAG/SAT search seeded by the PLA export — the current
+   explorer is saturated for one-shared-node cuts except the discarded S1 Δ−1.
+2. Remaining e2e bulk after the kept Arm64 block `TBL`/`TBX` path is now
+   stream-dominated again; packaging-only stream rewrites remain exhausted.
+3. Deferred full-matrix stream transpose / native Arm64 helper remain out of
+   pure-managed local scope unless explicitly reopened.
+
+### Multi-output beam-search mode — tooling kept
+
+Added `beam` mode to `tools/StreamSboxSynthesis`. It grows a shared four-input
+DAG with `AND`/`OR`/`XOR`/`AND NOT`, ranks partial states by Hamming distance
+to the four `fe` cofactors, and only reports exact covers (all cofactors present
+as DAG nodes) including the final mux cost.
+
+Example:
+
+```sh
+dotnet run -c Release --project tools/StreamSboxSynthesis -- beam 1 20 120
+```
+
+Deep scan (`max_gates=20`, `beam=120`) exact-cover results vs portable source
+gate counts:
+
+| S-box | source | best exact complete | delta |
+|------:|-------:|--------------------:|------:|
+| 1 | 23 | 20 | −3 |
+| 2 | 19 | 23 | +4 |
+| 3 | 17 | 17 | 0 |
+| 4 | 20 | no cover ≤20 | — |
+| 5 | 21 | no cover ≤20 | — |
+| 6 | 18 | 22 | +4 |
+| 7 | 19 | 24 | +5 |
+
+Only S1 is a structural under-threshold candidate under this heuristic. The
+score counts every intermediate DAG node once; it still does not model Arm64
+`BSL`, register pressure, or RyuJIT scheduling.
+
+### Beam-search S1 shared DAG (complete 20) — discarded
+
+Implemented the S1 exact cover found by beam search (16 intermediate gates + 2
+`Select` merges; theoretical portable complete cost 20 vs HEAD 23). Verified
+over all 32 inputs; Release tests 73/73; protocol checksum `76DC3CFC07B7D0F2`.
+
+Isolated BDN `GenerateBitslicedStream` ShortRun, 3 alternating pairs:
+
+| Pair | HEAD | CAND |
+|-----:|-----:|-----:|
+| 1 | 219.5 ns | 220.0 ns |
+| 2 | 220.2 ns | 220.5 ns |
+| 3 | 219.3 ns | 221.0 ns |
+| mean | ≈ **219.7 ns** | ≈ **220.5 ns** |
+
+Protocol pairs:
+
+| Pair | HEAD | CAND |
+|-----:|-----:|-----:|
+| 1 | 627.3 ns | 628.1 ns |
+| 2 | 636.7 ns | 631.3 ns |
+| 3 | 636.7 ns | 631.4 ns |
+| mean | ≈ **633.5 ns** | ≈ **630.3 ns** |
+
+Isolated stream is a small but consistent regression (~0.8 ns). Protocol is
+mixed and within host noise. Restored HEAD. A theoretical Δ−3 portable gate cut
+on a single S-box is still below the keep threshold on this managed Arm64 path
+when it does not improve the isolated stream kernel.
+
+Current HEAD baseline in this quiet window (after kept Arm64 block `TBL`/`TBX`):
+
+- `GenerateBitslicedStream` ≈ **220–235 ns**/packet (host-dependent)
+- `DecipherBlocksColumnMajor` ≈ **15.83 ns**/block
+- `ffdecsa-compare-v1` ≈ **627–651 ns**/packet
+
+### Research status after this session
+
+Kept:
+
+- `complete_total` filtering in the shared-node explorer
+- Hamming-guided multi-output `beam` mode (candidate generator only)
+
+Discarded after measurement:
+
+- single-shared-node S1 rewrite (`complete_total` 22)
+- expanding remaining `fe` XOR-and merges to `Select`
+- beam-search S1 DAG (`complete_total` 20)
+
+Still open for pure-managed work:
+
+1. Stronger multi-output synthesis (exact SAT/DAG, or residual CSE that reduces
+   live vector pressure rather than only gate count) — only S1 currently shows a
+   structural cut, and it did not win on the hot path.
+2. Stream packaging / register-window rewrites remain exhausted.
+3. Full-matrix stream transpose and native Arm64 helpers remain deferred /
+   out-of-scope for the pure-managed scoreboard unless reopened explicitly.
