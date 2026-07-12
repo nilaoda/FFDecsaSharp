@@ -1176,3 +1176,23 @@ Captured optimized Apple M4 assembly for both implementations.
 - The current .NET 10 reference intrinsics expose `Xor3` only under SVE. Apple M4 does not provide SVE, and there is no public non-SVE SHA-3 `eor3` / `bcax` intrinsic available to this pure-managed implementation.
 
 The reference measurement in this inspection window was `502.34 ns/packet`; the managed baseline remains around `750–805 ns/packet` depending on host state. This is a concrete backend advantage for C that source-level `Vector128` expression reshaping cannot reproduce today. A native Arm64 helper could expose these instructions, but that changes the pure-managed scope and must be treated as a separate, opt-in backend rather than a migration optimization.
+
+### Arm64 AdvSIMD bit-select lowering — kept
+
+Stayed within the pure-managed implementation and used `Vector128.ConditionalSelect` only for exact mux identities already present in the stream kernel:
+
+- four B-register rotation updates, `a ^ (p & (a ^ b))`;
+- the `r` update, `r ^ (q & (carry ^ r))`;
+- the S4 output mux, `tmp0 ^ (fe & (tmp1 ^ tmp0))`;
+- the F update keeps the equivalent shared helper form and falls back to the original expression where the JIT does not retain a select instruction.
+
+The helper uses `ConditionalSelect` on AdvSIMD and the original boolean identity elsewhere, so x86 paths retain their existing two-operation lowering. On Apple M4, RyuJIT lowers the direct sites to `bsl` (and chains same-mask rotations with `bit` / `bif`): `Step<NormalStep>` shrank from 1,656 B to 1,584 B, with no vector stack spills in either version.
+
+Correctness: 73 Release tests passed; protocol checksum `76DC3CFC07B7D0F2`; 0 managed allocation.
+
+Measurements on Apple M4 / .NET 10.0.8:
+
+- isolated `GenerateBitslicedStream`: candidate `217.52 ns` (99.9% CI `214.91–220.13 ns`) vs immediately adjacent HEAD `226.94 ns` (CI `221.55–232.33 ns`), around **4% faster**;
+- protocol samples: candidate `741.57 / 750.31 / 751.49 ns/packet`, HEAD `759.05 / 749.28 ns/packet`. The average end-to-end direction is a modest ~**0.8%** improvement amid host drift, while the isolated stream signal is clear.
+
+Kept because the codegen change is directly verified, semantics are identical, the isolated hot path has a clear multi-nanosecond gain, and fallback code preserves non-Arm behavior. A follow-up that explicitly expanded the four F updates did produce additional select instructions but grew the Step body and regressed the isolated mean (`219.03 ns`); it was discarded.

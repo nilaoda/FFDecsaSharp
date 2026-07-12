@@ -2,6 +2,7 @@ using FFDecsaSharp.BitSlice;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.Arm;
 
 namespace FFDecsaSharp.CSA;
 
@@ -568,17 +569,17 @@ internal static class CsaBitslicedStreamCipher
         d[3] = e[3] ^ z[3] ^ extraB3;
 
         Vector128<ulong> rotateBit3 = nextB3;
-        nextB3 ^= (nextB3 ^ nextB2) & p;
-        nextB2 ^= (nextB2 ^ nextB1) & p;
-        nextB1 ^= (nextB1 ^ nextB0) & p;
-        nextB0 ^= (nextB0 ^ rotateBit3) & p;
+        nextB3 = Select(p, nextB2, nextB3);
+        nextB2 = Select(p, nextB1, nextB2);
+        nextB1 = Select(p, nextB0, nextB1);
+        nextB0 = Select(p, rotateBit3, nextB0);
 
         Vector128<ulong> carry = r;
         UpdateFAndE(0, previousF0, ref carry, z, e, f, q);
         UpdateFAndE(1, previousF1, ref carry, z, e, f, q);
         UpdateFAndE(2, previousF2, ref carry, z, e, f, q);
         UpdateFAndE(3, previousF3, ref carry, z, e, f, q);
-        r ^= q & (carry ^ r);
+        r = Select(q, carry, r);
         registerOffset--;
         Set(ref a, registerOffset, 0, nextA0);
         Set(ref a, registerOffset, 1, nextA1);
@@ -633,7 +634,7 @@ internal static class CsaBitslicedStreamCipher
         tmp0 = fa ^ ((fc & (fa ^ fd)) | (fb ^ (fc | (fd ^ activeLanes))));
         tmp1 = (fa & fb) ^ (fb ^ (((fa | fc) & fd) ^ fc));
         tmp2 = fa ^ ((fb & fc) | (((fa & (fb ^ fd)) | fc) ^ fd));
-        y[1] = tmp0 ^ (fe & (tmp1 ^ tmp0));
+        y[1] = Select(fe, tmp1, tmp0);
         x[3] = (y[1] ^ tmp2) ^ fe;
 
         fe = Get(aWindow, 4, 2);
@@ -674,6 +675,20 @@ internal static class CsaBitslicedStreamCipher
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Vector128<ulong> Select(
+        Vector128<ulong> condition,
+        Vector128<ulong> left,
+        Vector128<ulong> right)
+    {
+        if (AdvSimd.IsSupported)
+        {
+            return Vector128.ConditionalSelect(condition, left, right);
+        }
+
+        return right ^ (condition & (left ^ right));
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void UpdateFAndE(
         int bit,
         Vector128<ulong> previousF,
@@ -685,7 +700,7 @@ internal static class CsaBitslicedStreamCipher
     {
         Vector128<ulong> sum = z[bit] ^ e[bit] ^ carry;
         Vector128<ulong> nextCarry = (z[bit] & e[bit]) | ((z[bit] ^ e[bit]) & carry);
-        f[bit] = e[bit] ^ (q & (sum ^ e[bit]));
+        f[bit] = Select(q, sum, e[bit]);
         e[bit] = previousF;
         carry = nextCarry;
     }
