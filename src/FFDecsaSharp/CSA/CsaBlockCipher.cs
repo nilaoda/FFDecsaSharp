@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.Arm;
 
 namespace FFDecsaSharp.CSA;
 
@@ -495,6 +496,17 @@ internal static class CsaBlockCipher
         ref byte sBoxReference,
         ref byte permutationReference)
     {
+        if (AdvSimd.Arm64.IsSupported)
+        {
+            PopulateTransformOutputs128Arm64(
+                roundKey,
+                ref stateReference,
+                sBoxInputOffset,
+                ref sBoxReference,
+                ref permutationReference);
+            return;
+        }
+
         ushort transformed;
         transformed = Unsafe.Add(ref transformReference, roundKey ^ Unsafe.Add(ref stateReference, sBoxInputOffset + 0));
         Unsafe.Add(ref sBoxReference, 0) = (byte)(transformed >> 8);
@@ -882,6 +894,74 @@ internal static class CsaBlockCipher
         Unsafe.Add(ref permutationReference, 127) = (byte)transformed;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private static void PopulateTransformOutputs128Arm64(
+        byte roundKey,
+        ref byte stateReference,
+        int sBoxInputOffset,
+        ref byte sBoxReference,
+        ref byte permutationReference)
+    {
+        ref byte sBoxTable = ref MemoryMarshal.GetArrayDataReference(BlockSBoxLookupTable);
+        ref byte permutationTable = ref MemoryMarshal.GetArrayDataReference(BlockPermutationLookupTable);
+        Vector128<byte> key = Vector128.Create(roundKey);
+
+        for (int lane = 0; lane < BitSlice.BitSliceBlock.MaxLaneCount; lane += Vector128<byte>.Count)
+        {
+            Vector128<byte> indexes = Unsafe.ReadUnaligned<Vector128<byte>>(
+                ref Unsafe.Add(ref stateReference, sBoxInputOffset + lane)) ^ key;
+
+            Unsafe.WriteUnaligned(
+                ref Unsafe.Add(ref sBoxReference, lane),
+                LookupTransformArm64(indexes, ref sBoxTable));
+            Unsafe.WriteUnaligned(
+                ref Unsafe.Add(ref permutationReference, lane),
+                LookupTransformArm64(indexes, ref permutationTable));
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Vector128<byte> LookupTransformArm64(Vector128<byte> indexes, ref byte tableReference)
+    {
+        Vector128<byte> result = AdvSimd.Arm64.VectorTableLookup(
+            (
+                Unsafe.ReadUnaligned<Vector128<byte>>(ref tableReference),
+                Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref tableReference, 16)),
+                Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref tableReference, 32)),
+                Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref tableReference, 48))),
+            indexes);
+
+        indexes -= Vector128.Create((byte)64);
+        result = AdvSimd.Arm64.VectorTableLookupExtension(
+            result,
+            (
+                Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref tableReference, 64)),
+                Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref tableReference, 80)),
+                Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref tableReference, 96)),
+                Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref tableReference, 112))),
+            indexes);
+
+        indexes -= Vector128.Create((byte)64);
+        result = AdvSimd.Arm64.VectorTableLookupExtension(
+            result,
+            (
+                Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref tableReference, 128)),
+                Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref tableReference, 144)),
+                Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref tableReference, 160)),
+                Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref tableReference, 176))),
+            indexes);
+
+        indexes -= Vector128.Create((byte)64);
+        return AdvSimd.Arm64.VectorTableLookupExtension(
+            result,
+            (
+                Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref tableReference, 192)),
+                Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref tableReference, 208)),
+                Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref tableReference, 224)),
+                Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref tableReference, 240))),
+            indexes);
+    }
+
     private static byte Permute(byte value)
     {
         return (byte)(
@@ -897,6 +977,10 @@ internal static class CsaBlockCipher
 
     private static readonly ushort[] BlockTransformTable = CreateBlockTransformTable();
 
+    private static readonly byte[] BlockSBoxLookupTable = BlockSBox.ToArray();
+
+    private static readonly byte[] BlockPermutationLookupTable = CreateBlockPermutationLookupTable();
+
     private static ushort[] CreateBlockTransformTable()
     {
         ushort[] table = new ushort[256];
@@ -906,6 +990,19 @@ internal static class CsaBlockCipher
         {
             byte sBoxOutput = sBox[input];
             table[input] = (ushort)((sBoxOutput << 8) | Permute(sBoxOutput));
+        }
+
+        return table;
+    }
+
+    private static byte[] CreateBlockPermutationLookupTable()
+    {
+        byte[] table = new byte[256];
+        ReadOnlySpan<byte> sBox = BlockSBox;
+
+        for (int input = 0; input < table.Length; input++)
+        {
+            table[input] = Permute(sBox[input]);
         }
 
         return table;

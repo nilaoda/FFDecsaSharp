@@ -1202,3 +1202,24 @@ Kept because the codegen change is directly verified, semantics are identical, t
 Added `tools/StreamSboxSynthesis`, an offline .NET tool that derives each stream S-box's four `fe` cofactor truth tables from the maintained C# boolean networks. It enumerates bounded four-input expressions over `AND`, `OR`, `XOR`, and portable `AND NOT`, then reports common nodes usable by at least two cofactors.
 
 At formula cost 4, the initial catalog contains 8,312 unique truth functions. The current scorer is deliberately a bounded candidate generator, not a global-optimality proof: it only recognizes a shared node plus a one-gate composition with an independently enumerated residual. Candidates remain research artifacts until they are checked against all 32 S-box inputs and demonstrate a paired stream benchmark improvement.
+
+### Arm64 vectorized block-transform lookup — kept
+
+The 128-lane block path previously performed 128 independent random `ushort` lookups per block-cipher round. Added an Arm64-only AdvSIMD path for that exact 128-lane shape:
+
+- Split the packed transform result into two one-time 256-byte lookup tables: S-box output and permuted output.
+- Process 16 indexes at a time with one `TBL` plus three `TBX` instructions per table. The index is reduced by 64 between table groups; out-of-range lanes retain the preceding result, yielding a complete 256-byte lookup without scalar gathers.
+- Retain the previous packed-`ushort` scalar implementation as the fallback for x64 and other targets, so non-Arm code generation and semantics are unchanged.
+
+Correctness:
+
+- `dotnet test src/FFDecsaSharp.slnx --no-restore -c Release -m:1` — 73 passed.
+- Protocol checksum remains `76DC3CFC07B7D0F2`; managed allocation remains 0 B.
+- Captured optimized Arm64 RyuJIT output contains the expected `tbl` and `tbx` instructions in `PopulateTransformOutputs128Arm64`.
+
+Apple M4 / .NET 10.0.8 / Arm64 RyuJIT measurements with matching short BenchmarkDotNet jobs:
+
+- `DecipherBlocksColumnMajor`: baseline **20.789 ns/block**; candidate **15.795 ns/block**; approximately **24.0% faster**.
+- `ffdecsa-compare-v1`, 128 decrypt-only packets: immediately adjacent baseline **747.898 ns/packet**; candidate **626.361 ns/packet**; approximately **16.2% faster**.
+
+This is a local data-layout realization of the existing block transform, not a native backend. It is the first retained improvement that materially reduces the scalar block-table contribution; stream S-box synthesis remains a separate research track.
