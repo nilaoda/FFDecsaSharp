@@ -1,6 +1,30 @@
 using System.Globalization;
 
 const ushort All = ushort.MaxValue;
+if (args.Length >= 1 && string.Equals(args[0], "pla", StringComparison.OrdinalIgnoreCase))
+{
+    int sbox = args.Length > 1 && int.TryParse(args[1], out int parsedSbox) ? parsedSbox : 1;
+    if (sbox is < 1 or > 7)
+    {
+        Console.Error.WriteLine("Usage: pla [sbox: 1..7]");
+        return 1;
+    }
+
+    ushort[] cofactors = GetCofactors(sbox - 1);
+    Console.WriteLine(".i 4");
+    Console.WriteLine(".o 4");
+    Console.WriteLine(".ilb fa fb fc fd");
+    Console.WriteLine(".ob a0 a1 b0 b1");
+    for (int row = 0; row < 16; row++)
+    {
+        string input = Convert.ToString(row, 2).PadLeft(4, '0');
+        string output = string.Concat(cofactors.Select(value => (value & (1 << row)) != 0 ? '1' : '0'));
+        Console.WriteLine($"{input} {output}");
+    }
+    Console.WriteLine(".e");
+    return 0;
+}
+
 int maxCost = args.Length == 1 && int.TryParse(args[0], out int parsed) ? parsed : 4;
 if (maxCost is < 1 or > 7)
 {
