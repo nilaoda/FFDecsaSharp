@@ -1114,3 +1114,28 @@ Interpretation:
 - Do not keep partial AndNot rewrites without a clear multi-pair isolated **and** e2e win.
 - Next stream-kernel avenues still need either joint multi-output (shared-DAG across a whole 5→2 S-box) synthesis with a larger measured cut, or a different plane/register representation — not more packaging.
 
+### Current HEAD reassessment and next research target
+
+Re-read the current implementation state after the retained/discarded 2026-07-12 experiments and refreshed the local measurements on Apple M4 / .NET 10.0.8 / Arm64 RyuJIT.
+
+Correctness:
+
+- `dotnet test src/FFDecsaSharp.slnx --no-restore -c Release -m:1` — 73 passed.
+
+Protocol throughput (`ffdecsa-compare-v1`, checksum `76DC3CFC07B7D0F2`, decrypt-only, 128 packets, 0 managed allocation):
+
+- C#: `805.851 ns` per packet, `1,240,924 packets/s`, `1,826.640 Mbit/s`.
+- FFdecsa C `PARALLEL_128_2LONG`: `543.804 ns` per packet, `1,838,897 packets/s`, `2,706.857 Mbit/s`.
+- Managed throughput is about `67.5%` of the calibrated C reference in this host window.
+
+Isolated short BenchmarkDotNet readings:
+
+- `GenerateBitslicedStream`: `226.0 ns` per packet.
+- `DecipherBlocksColumnMajor`: `20.73 ns` per block.
+
+Research notes:
+
+- A naive exact BFS over complete 5-input S-box output bits with `AND`/`OR`/`XOR`/`NOT` becomes impractical quickly: by cost 7 it had generated about 7.37 million functions while 13 of the 14 stream S-box output bits were still not found. This supports FFdecsa's existing decomposition strategy: synthesize 4-input temporary functions and combine them through the `fe` selector instead of treating each 5-input output independently.
+- Packaging-only Step/register-window rewrites are exhausted for this phase. Multiple variants were correctness-green but failed to produce keep-grade e2e gains.
+- The next plausible research target is a constrained, shared-DAG synthesis for each complete 5→2 S-box using the existing `fe`-mux structure: search for common 4-input subexpressions shared by both output bits, not independent one-output formulas. A keep candidate should show a clear isolated `GenerateBitslicedStream` win across paired runs before protocol measurement.
+- Secondary target: cross-platform measurement of the existing `Vector256`/`Vector512` block-state update paths on AVX2/AVX-512 hardware. Apple Silicon cannot validate those wider paths.
