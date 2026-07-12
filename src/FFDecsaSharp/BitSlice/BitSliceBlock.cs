@@ -1,6 +1,5 @@
 using System.Runtime.Intrinsics;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 
 namespace FFDecsaSharp.BitSlice;
 
@@ -19,6 +18,12 @@ internal static class BitSliceBlock
 
         Span<Vector128<ulong>> planes = destinationPlanes[..BitPlaneCount];
         planes.Clear();
+
+        if (laneCount == MaxLaneCount)
+        {
+            FfdecsaBitSliceLayout.Encode128(source, planes);
+            return true;
+        }
 
         for (int lane = 0; lane < laneCount; lane++)
         {
@@ -92,76 +97,7 @@ internal static class BitSliceBlock
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     internal static void Decode128(ReadOnlySpan<Vector128<ulong>> sourcePlanes, Span<byte> destination)
     {
-        ref Vector128<ulong> sourceReference = ref MemoryMarshal.GetReference(sourcePlanes);
-        ref byte outputReference = ref MemoryMarshal.GetReference(destination);
-        ref byte reverseBits = ref MemoryMarshal.GetReference(ReverseBitsTable);
-
-        for (int byteIndex = 0; byteIndex < BytesPerLane; byteIndex++)
-        {
-            int planeOffset = byteIndex * 8;
-            // Split each 128-lane plane into two 64-lane halves once.
-            ref Vector128<ulong> planeBase = ref Unsafe.Add(ref sourceReference, planeOffset);
-            ulong plane0Lo = Unsafe.Add(ref planeBase, 0).GetElement(0);
-            ulong plane0Hi = Unsafe.Add(ref planeBase, 0).GetElement(1);
-            ulong plane1Lo = Unsafe.Add(ref planeBase, 1).GetElement(0);
-            ulong plane1Hi = Unsafe.Add(ref planeBase, 1).GetElement(1);
-            ulong plane2Lo = Unsafe.Add(ref planeBase, 2).GetElement(0);
-            ulong plane2Hi = Unsafe.Add(ref planeBase, 2).GetElement(1);
-            ulong plane3Lo = Unsafe.Add(ref planeBase, 3).GetElement(0);
-            ulong plane3Hi = Unsafe.Add(ref planeBase, 3).GetElement(1);
-            ulong plane4Lo = Unsafe.Add(ref planeBase, 4).GetElement(0);
-            ulong plane4Hi = Unsafe.Add(ref planeBase, 4).GetElement(1);
-            ulong plane5Lo = Unsafe.Add(ref planeBase, 5).GetElement(0);
-            ulong plane5Hi = Unsafe.Add(ref planeBase, 5).GetElement(1);
-            ulong plane6Lo = Unsafe.Add(ref planeBase, 6).GetElement(0);
-            ulong plane6Hi = Unsafe.Add(ref planeBase, 6).GetElement(1);
-            ulong plane7Lo = Unsafe.Add(ref planeBase, 7).GetElement(0);
-            ulong plane7Hi = Unsafe.Add(ref planeBase, 7).GetElement(1);
-
-            Decode128Half(ref reverseBits, ref outputReference, byteIndex, 0, plane0Lo, plane1Lo, plane2Lo, plane3Lo, plane4Lo, plane5Lo, plane6Lo, plane7Lo);
-            Decode128Half(ref reverseBits, ref outputReference, byteIndex, 8, plane0Hi, plane1Hi, plane2Hi, plane3Hi, plane4Hi, plane5Hi, plane6Hi, plane7Hi);
-        }
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void Decode128Half(
-        ref byte reverseBits,
-        ref byte outputReference,
-        int byteIndex,
-        int firstGroup,
-        ulong planeValue0,
-        ulong planeValue1,
-        ulong planeValue2,
-        ulong planeValue3,
-        ulong planeValue4,
-        ulong planeValue5,
-        ulong planeValue6,
-        ulong planeValue7)
-    {
-        for (int groupInVector = 0; groupInVector < 8; groupInVector++)
-        {
-            int shift = 56 - (groupInVector * 8);
-            ulong transposed = Transpose8By8(
-                (ulong)Unsafe.Add(ref reverseBits, (byte)(planeValue0 >> shift))
-                | ((ulong)Unsafe.Add(ref reverseBits, (byte)(planeValue1 >> shift)) << 8)
-                | ((ulong)Unsafe.Add(ref reverseBits, (byte)(planeValue2 >> shift)) << 16)
-                | ((ulong)Unsafe.Add(ref reverseBits, (byte)(planeValue3 >> shift)) << 24)
-                | ((ulong)Unsafe.Add(ref reverseBits, (byte)(planeValue4 >> shift)) << 32)
-                | ((ulong)Unsafe.Add(ref reverseBits, (byte)(planeValue5 >> shift)) << 40)
-                | ((ulong)Unsafe.Add(ref reverseBits, (byte)(planeValue6 >> shift)) << 48)
-                | ((ulong)Unsafe.Add(ref reverseBits, (byte)(planeValue7 >> shift)) << 56));
-
-            int firstLane = (firstGroup + groupInVector) * 8;
-            int baseOffset = (firstLane * BytesPerLane) + byteIndex;
-            Unsafe.Add(ref outputReference, baseOffset) = Unsafe.Add(ref reverseBits, (byte)transposed);
-            Unsafe.Add(ref outputReference, baseOffset + BytesPerLane) = Unsafe.Add(ref reverseBits, (byte)(transposed >> 8));
-            Unsafe.Add(ref outputReference, baseOffset + (2 * BytesPerLane)) = Unsafe.Add(ref reverseBits, (byte)(transposed >> 16));
-            Unsafe.Add(ref outputReference, baseOffset + (3 * BytesPerLane)) = Unsafe.Add(ref reverseBits, (byte)(transposed >> 24));
-            Unsafe.Add(ref outputReference, baseOffset + (4 * BytesPerLane)) = Unsafe.Add(ref reverseBits, (byte)(transposed >> 32));
-            Unsafe.Add(ref outputReference, baseOffset + (5 * BytesPerLane)) = Unsafe.Add(ref reverseBits, (byte)(transposed >> 40));
-            Unsafe.Add(ref outputReference, baseOffset + (6 * BytesPerLane)) = Unsafe.Add(ref reverseBits, (byte)(transposed >> 48));
-            Unsafe.Add(ref outputReference, baseOffset + (7 * BytesPerLane)) = Unsafe.Add(ref reverseBits, (byte)(transposed >> 56));
-        }
+        FfdecsaBitSliceLayout.Decode128(sourcePlanes, destination);
     }
 
     private static bool HasValidArguments(int byteLength, int laneCount, int planeLength)

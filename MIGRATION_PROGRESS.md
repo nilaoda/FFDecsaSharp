@@ -1372,6 +1372,42 @@ Current HEAD baseline in this quiet window (after kept Arm64 block `TBL`/`TBX`):
 - `DecipherBlocksColumnMajor` ≈ **15.83 ns**/block
 - `ffdecsa-compare-v1` ≈ **627–651 ns**/packet
 
+### FFdecsa 64x128 bitslice layout — kept
+
+Revisited the previously deferred full-matrix transpose as an internal layout
+change rather than a replacement for only `Decode128`. Added
+`FfdecsaBitSliceLayout` and use it only for complete 128-lane groups:
+
+- `TryEncode` packs the 1,024 input bytes as 64 `Vector128<ulong>` rows,
+  applies FFdecsa's six-stage counter-clockwise 64x128 transpose, then maps
+  the byte-local plane order with `plane ^ 7`.
+- `Decode128` restores that row order, applies the matching clockwise
+  transpose, and writes lane-major output bytes directly.
+- The stream Boolean network itself is unchanged. Its operations are invariant
+  under a consistent lane permutation, so initialization and output use the
+  same internal layout without changing the S-box or register code.
+- Partial batches retain the prior scalar encode/decode path.
+
+Correctness:
+
+- `dotnet test src/FFDecsaSharp.slnx --no-restore -c Release -m:1` — 73 passed.
+- Protocol checksum `76DC3CFC07B7D0F2`; managed allocation remains 0 B.
+
+Apple M4 / .NET 10.0.8 / Arm64 RyuJIT:
+
+- isolated `GenerateBitslicedStream`: baseline **217.070 ns/packet**;
+  candidate **137.4 ns/packet**, approximately **36.7% faster**.
+- adjacent protocol harness: baseline **684.769 ns/packet**; candidate
+  **512.354 ns/packet**, approximately **25.2% faster**. Other candidate
+  samples were **507.558** and **513.967 ns/packet**, consistent with the same
+  direction despite host drift.
+
+This implementation uses only portable `Vector128<ulong>` operations and has
+no Arm-specific intrinsic dependency, so it compiles to the same algorithm on
+x64. The magnitude of the x64 win remains unmeasured until AVX2/AVX-512
+hardware is available; do not claim cross-architecture benchmark parity from
+the Arm64 result alone.
+
 ### Research status after this session
 
 Kept:
