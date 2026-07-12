@@ -25,10 +25,12 @@ if (args.Length >= 1 && string.Equals(args[0], "pla", StringComparison.OrdinalIg
     return 0;
 }
 
-int maxCost = args.Length == 1 && int.TryParse(args[0], out int parsed) ? parsed : 4;
+bool xorPairMode = args.Length >= 1 && string.Equals(args[0], "xor2", StringComparison.OrdinalIgnoreCase);
+int costArgumentIndex = xorPairMode ? 1 : 0;
+int maxCost = args.Length > costArgumentIndex && int.TryParse(args[costArgumentIndex], out int parsed) ? parsed : 4;
 if (maxCost is < 1 or > 7)
 {
-    Console.Error.WriteLine("Usage: dotnet run --project tools/StreamSboxSynthesis [max-cost: 1..7]");
+    Console.Error.WriteLine("Usage: dotnet run --project tools/StreamSboxSynthesis [max-cost: 1..7] | xor2 [max-cost: 1..7]");
     return 1;
 }
 
@@ -40,11 +42,14 @@ Console.WriteLine($"catalog_nodes={best.Count} max_formula_cost={maxCost}");
 for (int sbox = 0; sbox < 7; sbox++)
 {
     ushort[] targets = GetCofactors(sbox);
-    Console.WriteLine($"sbox={sbox + 1} cofactors={string.Join(',', targets.Select(static value => value.ToString("X4", CultureInfo.InvariantCulture)))}");
+    Console.WriteLine($"sbox={sbox + 1} outputs={GetOutputNames(sbox)} cofactors={string.Join(',', targets.Select(static value => value.ToString("X4", CultureInfo.InvariantCulture)))}");
 
-    foreach (Candidate candidate in FindCandidates(targets, best).Take(8))
+    IEnumerable<Candidate> candidates = xorPairMode
+        ? FindXorPairCandidates(targets, best)
+        : FindCandidates(targets, best);
+    foreach (Candidate candidate in candidates.Take(8))
     {
-        Console.WriteLine($"  total={candidate.TotalCost} shared={candidate.Shared.Expr} shared_cost={candidate.Shared.Cost} branches={candidate.Description}");
+        Console.WriteLine($"  cofactor_total={candidate.TotalCost} shared={candidate.Shared.Expr} shared_cost={candidate.Shared.Cost} branches={candidate.Description}");
     }
 }
 
@@ -178,6 +183,139 @@ static Branch? FindBestBranch(Node shared, ushort target, IReadOnlyDictionary<us
     return candidates.Count == 0 ? null : candidates.MinBy(static candidate => candidate.Cost);
 }
 
+static IEnumerable<Candidate> FindXorPairCandidates(IReadOnlyList<ushort> targets, IReadOnlyDictionary<ushort, Node> best)
+{
+    int baseline = targets.Sum(target => best.TryGetValue(target, out Node? node) ? node.Cost : 99);
+    List<Node> sharedNodes = best.Values
+        .Where(static node => node.Cost is > 0 and <= 3)
+        .Where(node => IsUsefulXorShare(node, targets, best))
+        .OrderBy(node => XorShareBenefit(node, targets, best))
+        .ThenBy(static node => node.Cost)
+        .ThenBy(static node => node.Value)
+        .Take(256)
+        .ToList();
+
+    for (int first = 0; first < sharedNodes.Count; first++)
+    {
+        Node left = sharedNodes[first];
+        for (int second = first + 1; second < sharedNodes.Count; second++)
+        {
+            Node right = sharedNodes[second];
+            if (left.Contains(right.Value) || right.Contains(left.Value))
+            {
+                continue;
+            }
+
+            int total = left.Cost + right.Cost;
+            int leftUses = 0;
+            int rightUses = 0;
+            var descriptions = new List<string>(targets.Count);
+            foreach (ushort target in targets)
+            {
+                XorBranch? branch = FindBestXorBranch(left, right, target, best);
+                if (branch is null)
+                {
+                    total = int.MaxValue;
+                    break;
+                }
+
+                total += branch.Cost;
+                leftUses += branch.LeftUses;
+                rightUses += branch.RightUses;
+                descriptions.Add(branch.Description);
+            }
+
+            if (total < baseline && leftUses >= 2 && rightUses >= 2)
+            {
+                yield return new Candidate(
+                    new Node(0, $"{left.Expr}; {right.Expr}", left.Cost + right.Cost, null, null),
+                    total,
+                    string.Join("; ", descriptions));
+            }
+        }
+    }
+}
+
+static bool IsUsefulXorShare(Node shared, IReadOnlyList<ushort> targets, IReadOnlyDictionary<ushort, Node> best)
+{
+    return targets.Any(target =>
+    {
+        if (!best.TryGetValue(target, out Node? direct)
+            || !best.TryGetValue((ushort)(target ^ shared.Value), out Node? residual)
+            || residual.Contains(shared.Value))
+        {
+            return false;
+        }
+
+        return residual.Cost + 1 < direct.Cost;
+    });
+}
+
+static int XorShareBenefit(Node shared, IReadOnlyList<ushort> targets, IReadOnlyDictionary<ushort, Node> best)
+{
+    int benefit = 0;
+    foreach (ushort target in targets)
+    {
+        if (best.TryGetValue(target, out Node? direct)
+            && best.TryGetValue((ushort)(target ^ shared.Value), out Node? residual)
+            && !residual.Contains(shared.Value))
+        {
+            benefit += Math.Min(0, residual.Cost + 1 - direct.Cost);
+        }
+    }
+
+    return benefit;
+}
+
+static XorBranch? FindBestXorBranch(Node left, Node right, ushort target, IReadOnlyDictionary<ushort, Node> best)
+{
+    XorBranch? result = null;
+    for (int mask = 0; mask < 4; mask++)
+    {
+        ushort sharedValue = 0;
+        int useCount = 0;
+        if ((mask & 1) != 0)
+        {
+            sharedValue ^= left.Value;
+            useCount++;
+        }
+        if ((mask & 2) != 0)
+        {
+            sharedValue ^= right.Value;
+            useCount++;
+        }
+
+        ushort residualValue = (ushort)(target ^ sharedValue);
+        if (!best.TryGetValue(residualValue, out Node? residual)
+            || residual.Contains(left.Value)
+            || residual.Contains(right.Value))
+        {
+            continue;
+        }
+
+        int cost = residualValue == 0
+            ? Math.Max(0, useCount - 1)
+            : residual.Cost + useCount;
+        string description = mask switch
+        {
+            0 => residual.Expr,
+            1 when residualValue == 0 => "shared0",
+            2 when residualValue == 0 => "shared1",
+            3 when residualValue == 0 => "shared0^shared1",
+            1 => $"shared0^{residual.Expr}",
+            2 => $"shared1^{residual.Expr}",
+            _ => $"shared0^shared1^{residual.Expr}",
+        };
+        var candidate = new XorBranch(cost, (mask & 1) != 0 ? 1 : 0, (mask & 2) != 0 ? 1 : 0, description);
+        if (result is null || candidate.Cost < result.Cost)
+        {
+            result = candidate;
+        }
+    }
+
+    return result;
+}
+
 static ushort[] GetCofactors(int sbox)
 {
     ushort fa = 0xAAAA;
@@ -187,6 +325,21 @@ static ushort[] GetCofactors(int sbox)
     (ushort zeroA, ushort zeroB) = Evaluate(sbox, 0, fa, fb, fc, fd);
     (ushort oneA, ushort oneB) = Evaluate(sbox, All, fa, fb, fc, fd);
     return [zeroA, oneA, zeroB, oneB];
+}
+
+static string GetOutputNames(int sbox)
+{
+    return sbox switch
+    {
+        0 => "x[0],z[2]",
+        1 => "x[1],z[3]",
+        2 => "y[0],x[2]",
+        3 => "y[1],x[3]",
+        4 => "z[0],y[2]",
+        5 => "z[1],y[3]",
+        6 => "p,q",
+        _ => throw new ArgumentOutOfRangeException(nameof(sbox)),
+    };
 }
 
 static (ushort A, ushort B) Evaluate(int sbox, ushort fe, ushort fa, ushort fb, ushort fc, ushort fd)
@@ -251,3 +404,4 @@ sealed record Node(ushort Value, string Expr, int Cost, Node? Left, Node? Right)
 }
 sealed record Branch(int Cost, bool UsesShared, string Description);
 sealed record Candidate(Node Shared, int TotalCost, string Description);
+sealed record XorBranch(int Cost, int LeftUses, int RightUses, string Description);

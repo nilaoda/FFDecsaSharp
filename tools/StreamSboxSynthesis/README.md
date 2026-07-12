@@ -12,10 +12,22 @@ enumerated residual. It is a candidate generator, not a proof of global
 multi-output optimality. Any proposed network must be independently checked
 against all 32 S-box inputs and then measured in the stream benchmark.
 
+The reported `cofactor_total` counts only the four `fe=0/1` formula trees and
+their explicitly listed shared nodes. It does not score the final `fe` muxes
+or any sharing already present in the maintained two-output network. Compare a
+candidate against the complete current S-box DAG before treating it as a gate
+reduction.
+
 Run it with a bounded formula cost:
 
 ```sh
 dotnet run -c Release --project tools/StreamSboxSynthesis -- 4
+```
+
+The `xor2` mode explores a bounded two-independent-shared-node XOR basis:
+
+```sh
+dotnet run -c Release --project tools/StreamSboxSynthesis -- xor2 6
 ```
 
 Increasing the bound grows the expression catalog quickly. Cost 4 is intended

@@ -1203,6 +1203,14 @@ Added `tools/StreamSboxSynthesis`, an offline .NET tool that derives each stream
 
 At formula cost 4, the initial catalog contains 8,312 unique truth functions. The current scorer is deliberately a bounded candidate generator, not a global-optimality proof: it only recognizes a shared node plus a one-gate composition with an independently enumerated residual. Candidates remain research artifacts until they are checked against all 32 S-box inputs and demonstrate a paired stream benchmark improvement.
 
+### Two-shared-node S-box exploration — tooling extended, no kernel change
+
+Added `xor2` mode to the synthesis explorer. It searches a bounded XOR basis of two independent shared four-input nodes, rejects residual expressions that recompute either shared node, and labels every S-box with its concrete stream outputs (`x[0],z[2]` through `p,q`). This exposes candidates missed by the earlier one-shared-node pass.
+
+Important scoring correction: `cofactor_total` only counts the four `fe=0/1` formulas plus explicit shared definitions. It does not include the final `fe` muxes or the cross-output sharing already present in the maintained hand-tuned DAG. A candidate whose cofactor total is lower is therefore not automatically a faster or even lower-gate stream network.
+
+Validated this limitation with the lowest-looking third-S-box candidate: after matching it to `y[0],x[2]` (rather than the adjacent fourth S-box), its complete implementation has the same 18 vector Boolean operations as the current source structure. It was not patched into the kernel. A temporary wrong-S-box mapping was caught immediately by the scalar-lane and packet regression tests, then reverted; the working implementation remains 73/73 green.
+
 ### Arm64 vectorized block-transform lookup — kept
 
 The 128-lane block path previously performed 128 independent random `ushort` lookups per block-cipher round. Added an Arm64-only AdvSIMD path for that exact 128-lane shape:
