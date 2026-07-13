@@ -85,14 +85,15 @@ jobs:
         run: |
           mkdir -p artifact
           cd publish
-          zip -r "../artifact/${{ steps.artifact.outputs.name }}.zip" . -x '*.dbg'
+          zip -r "../artifact/${{ steps.artifact.outputs.name }}.zip" . -x '*.dbg' -x '*.pdb' -x '*.xml'
 
       - name: Package Windows archive
         if: matrix.platform == 'windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force artifact | Out-Null
-          Compress-Archive -Path publish/* -DestinationPath "artifact/${{ steps.artifact.outputs.name }}.zip"
+          $files = Get-ChildItem publish -Recurse -File -Exclude *.pdb,*.xml,*.dbg | ForEach-Object { $_.FullName }
+          Compress-Archive -Path $files -DestinationPath "artifact/${{ steps.artifact.outputs.name }}.zip"
 
       - name: Assemble macOS application bundle
         if: matrix.platform == 'macos'
