@@ -35,16 +35,16 @@ jobs:
           - runner: ubuntu-24.04
             rid: linux-x64
             platform: linux
-          - runner: ubuntu-24.04-arm
+          - runner: ubuntu-24.04
             rid: linux-arm64
             platform: linux
           - runner: windows-latest
             rid: win-x64
             platform: windows
-          - runner: windows-11-arm
+          - runner: windows-latest
             rid: win-arm64
             platform: windows
-          - runner: macos-13
+          - runner: macos-14
             rid: osx-x64
             platform: macos
           - runner: macos-14
@@ -66,9 +66,6 @@ jobs:
           --runtime ${{ matrix.rid }}
           --self-contained true
           --output publish
-          -p:PublishAot=true
-          -p:PublishTrimmed=true
-          -p:StripSymbols=true
 
       - name: Set artifact name
         id: artifact

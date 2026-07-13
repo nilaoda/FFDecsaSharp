@@ -5,6 +5,7 @@
     <IsRoslynComponent>true</IsRoslynComponent>
     <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <PublishAot>false</PublishAot>
     <LangVersion>latest</LangVersion>
     <NoWarn>$(NoWarn);RS1032;RS2008</NoWarn>
   </PropertyGroup>
