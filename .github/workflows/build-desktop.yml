@@ -19,10 +19,13 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       release_tag: ${{ steps.release_tag.outputs.value }}
+      release_time: ${{ steps.release_tag.outputs.time }}
     steps:
-      - name: Create release tag
+      - name: Create UTC+8 release metadata
         id: release_tag
-        run: echo "value=build_$(date -u +'%Y%m%d%H%M%S')" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "value=build_$(date -u -d '8 hours' +'%Y%m%d%H%M%S')" >> "$GITHUB_OUTPUT"
+          echo "time=$(date -u -d '8 hours' +'%Y-%m-%d %H:%M:%S')" >> "$GITHUB_OUTPUT"
 
   build:
     name: ${{ matrix.rid }}
@@ -172,6 +175,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.metadata.outputs.release_tag }}
-          name: Build ${{ needs.metadata.outputs.release_tag }}
+          name: Build (${{ needs.metadata.outputs.release_time }})
           generate_release_notes: true
           files: release/*.zip
