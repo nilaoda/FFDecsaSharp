@@ -7,8 +7,8 @@
              x:Class="FFDecsaSharp.Gui.Views.SettingsWindow"
              x:DataType="vm:SettingsViewModel"
              Title="{DynamicResource Settings.Title}"
-             Width="600" Height="460"
-             MinWidth="520" MinHeight="400"
+             Width="600" Height="560"
+             MinWidth="520" MinHeight="480"
              WindowStartupLocation="CenterOwner">
   <shad:Window.Styles>
     <!-- Use a Grid instead of ShadUI's StackPanel template so tab content receives a bounded height and ScrollViewer can scroll. -->
@@ -104,6 +104,17 @@
               </ComboBox.ItemTemplate>
             </ComboBox>
             <TextBlock Text="{DynamicResource Settings.Description}" Classes="Hint" />
+            <TextBlock Text="{DynamicResource Settings.DecryptionThreads}" Classes="SectionTitle" />
+            <NumericUpDown shad:NumericUpDownAssist.NumericOnly="False"
+                           shad:ElementAssist.AttachFocus=""
+                           Width="220"
+                           Minimum="1"
+                           Maximum="{Binding MaximumDecryptionWorkerCount}"
+                           Value="{Binding DecryptionWorkerCount, Mode=TwoWay}"
+                           FormatString="0"
+                           HorizontalAlignment="Left"
+                           HorizontalContentAlignment="Center" />
+            <TextBlock Text="{Binding DecryptionWorkerCountHint}" Classes="Hint" />
           </StackPanel>
         </ScrollViewer>
       </TabItem>
@@ -114,6 +125,23 @@
             <StackPanel Spacing="4">
               <TextBlock Text="{DynamicResource Benchmark.Title}" Classes="SectionTitle" />
               <TextBlock Text="{DynamicResource Benchmark.Description}" Classes="Hint" />
+              <TextBlock Text="{Binding BenchmarkWorkerCountText}" Classes="Hint" />
+            </StackPanel>
+            <StackPanel Spacing="6">
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                <TextBlock Text="{DynamicResource Benchmark.Workload}" Classes="SectionTitle" />
+                <TextBlock Grid.Column="1" Text="{Binding BenchmarkWorkloadText}" FontWeight="SemiBold" />
+              </Grid>
+              <Slider Minimum="0"
+                      Maximum="{Binding MaximumBenchmarkWorkloadIndex}"
+                      Value="{Binding BenchmarkWorkloadIndex, Mode=TwoWay}"
+                      TickFrequency="1"
+                      IsSnapToTickEnabled="True" />
+              <Grid ColumnDefinitions="Auto,*">
+                <TextBlock Text="{Binding BenchmarkWorkloadMinimumText}" Classes="Hint" />
+                <TextBlock Grid.Column="1" Text="{Binding BenchmarkWorkloadMaximumText}" Classes="Hint" HorizontalAlignment="Right" />
+              </Grid>
+              <TextBlock Text="{Binding BenchmarkWorkloadHint}" Classes="Hint" />
             </StackPanel>
             <Border BorderBrush="{DynamicResource BorderColor}" BorderThickness="1" CornerRadius="6" Padding="14">
               <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">

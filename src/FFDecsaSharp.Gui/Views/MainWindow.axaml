@@ -110,6 +110,11 @@
             <TextBlock Text="{DynamicResource Main.GlobalSpeed}" Foreground="{DynamicResource MutedColor}" VerticalAlignment="Center" />
             <TextBlock Text="{Binding GlobalSpeedText}" FontWeight="SemiBold" VerticalAlignment="Center" />
           </StackPanel>
+          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <ToolTip.Tip><TextBlock Text="{DynamicResource Main.DecryptionThreadsHint}" /></ToolTip.Tip>
+            <TextBlock Text="{DynamicResource Main.DecryptionThreads}" Foreground="{DynamicResource MutedColor}" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding DecryptionWorkerCountText}" FontWeight="SemiBold" VerticalAlignment="Center" />
+          </StackPanel>
           <TextBlock Text="{DynamicResource Main.Concurrency}" Foreground="{DynamicResource MutedColor}" VerticalAlignment="Center" />
           <ComboBox Width="60"
                     ItemsSource="{Binding ConcurrencyOptions}"

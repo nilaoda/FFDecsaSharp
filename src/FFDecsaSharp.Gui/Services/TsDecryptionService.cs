@@ -8,7 +8,7 @@ internal readonly record struct DecryptionSummary(long PacketCount, long Decrypt
 internal static class TsDecryptionService
 {
     private const int PacketSize = 188;
-    private const int PacketsPerBlock = 4096;
+    public const int DefaultPacketsPerBlock = 4096;
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromMilliseconds(250);
 
     public static async Task<DecryptionSummary> DecryptAsync(
@@ -34,8 +34,11 @@ internal static class TsDecryptionService
         if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
 
         await using var output = new FileStream(outputPath, FileMode.Create, FileAccess.Write, FileShare.None, 1024 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
-        var buffer = new byte[PacketSize * PacketsPerBlock];
-        var results = new PacketDecryptionResult[PacketsPerBlock];
+        int workerCount = AppSettingsService.DecryptionWorkerCount;
+        int packetsPerBlock = PacketBlockDecryptionService.GetPacketsPerBlock(workerCount);
+        var buffer = new byte[PacketSize * packetsPerBlock];
+        var results = new PacketDecryptionResult[packetsPerBlock];
+        using var workerGroup = new PacketDecryptionWorkerGroup(decryptor!, workerCount);
         long processed = 0;
         long packets = 0;
         long decrypted = 0;
@@ -54,7 +57,7 @@ internal static class TsDecryptionService
                 int blockLength = (int)Math.Min(buffer.Length, remaining);
                 await input.ReadExactlyAsync(buffer.AsMemory(0, blockLength), cancellationToken).ConfigureAwait(false);
                 int blockPackets = blockLength / PacketSize;
-                bool succeeded = await Task.Run(() => decryptor!.TryDecryptPackets(buffer.AsSpan(0, blockLength), results.AsSpan(0, blockPackets)), cancellationToken).ConfigureAwait(false);
+                bool succeeded = workerGroup.TryDecrypt(buffer, results, blockPackets, cancellationToken);
                 if (!succeeded) throw new InvalidDataException(LocalizationService.Get(LocKeys.Error_ProcessBuffer));
                 await output.WriteAsync(buffer.AsMemory(0, blockLength), cancellationToken).ConfigureAwait(false);
 

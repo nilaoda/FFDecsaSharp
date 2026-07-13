@@ -10,7 +10,11 @@ namespace FFDecsaSharp.Gui;
 
 public sealed class App : Application
 {
-    public override void Initialize() => AvaloniaXamlLoader.Load(this);
+    public override void Initialize()
+    {
+        AvaloniaXamlLoader.Load(this);
+        TextBoxContextMenuService.Install();
+    }
 
     public override void OnFrameworkInitializationCompleted()
     {
@@ -24,6 +28,7 @@ public sealed class App : Application
             e.SetObserved();
         };
 
+        AppSettingsService.Load();
         LocalizationService.Apply(LanguageMode.Auto);
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             desktop.MainWindow = new MainWindow { DataContext = new MainWindowViewModel() };

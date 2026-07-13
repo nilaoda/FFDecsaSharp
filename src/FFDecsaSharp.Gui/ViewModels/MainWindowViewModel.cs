@@ -24,21 +24,23 @@ public partial class MainWindowViewModel : ViewModelBase
     public ObservableCollection<DecryptionTask> Tasks { get; } = [];
     public int[] ConcurrencyOptions { get; } = [1, 2, 3, 5];
     public string DetailPaneButtonText => IsDetailPaneOpen ? L.Main_CollapseDetails : L.Main_ShowDetails;
+    public string DecryptionWorkerCountText => AppSettingsService.DecryptionWorkerCount.ToString();
 
     public bool HasTasks => Tasks.Count > 0;
     public bool HasNoTasks => !HasTasks;
     public string QueueSummary => L.App_TaskSummary(Tasks.Count);
     public bool HasRunningTasks => _runningTasks.Count > 0;
     public bool HasQueuedTasks => Tasks.Any(t => t.StatusKey == LocKeys.Status_Queued);
-    public bool CanStartSelected => !HasRunningTasks || _runningTasks.Count < MaxConcurrency;
+    public bool CanStartSelected => !HasRunningTasks || _runningTasks.Count < EffectiveMaxConcurrency;
     public bool CanDeleteSelected => SelectedTask is { IsRunning: false };
     public bool CanStopQueue => HasRunningTasks || HasQueuedTasks;
-    public bool CanStartAll => HasQueuedTasks && (!HasRunningTasks || _runningTasks.Count < MaxConcurrency);
+    public bool CanStartAll => HasQueuedTasks && (!HasRunningTasks || _runningTasks.Count < EffectiveMaxConcurrency);
 
     public MainWindowViewModel()
     {
         Tasks.CollectionChanged += Tasks_CollectionChanged;
         LocalizationService.LanguageChanged += LocalizationService_LanguageChanged;
+        AppSettingsService.DecryptionWorkerCountChanged += AppSettingsService_DecryptionWorkerCountChanged;
     }
 
     [RelayCommand]
@@ -90,7 +92,7 @@ public partial class MainWindowViewModel : ViewModelBase
             while (!_globalCts.IsCancellationRequested)
             {
                 DecryptionTask? taskToStart = null;
-                if (_runningTasks.Count < MaxConcurrency)
+                if (_runningTasks.Count < EffectiveMaxConcurrency)
                     taskToStart = Tasks.FirstOrDefault(t => t.StatusKey == LocKeys.Status_Queued);
 
                 if (taskToStart is not null)
@@ -230,6 +232,16 @@ public partial class MainWindowViewModel : ViewModelBase
     }
 
     private int CoerceConcurrency(int value) => ConcurrencyOptions.Contains(value) ? value : 1;
+
+    private int EffectiveMaxConcurrency => Math.Min(
+        MaxConcurrency,
+        Math.Max(1, Environment.ProcessorCount / AppSettingsService.DecryptionWorkerCount));
+
+    private void AppSettingsService_DecryptionWorkerCountChanged(object? sender, EventArgs e)
+    {
+        OnPropertyChanged(nameof(DecryptionWorkerCountText));
+        RefreshQueueState();
+    }
 
     private void Tasks_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {

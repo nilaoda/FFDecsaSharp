@@ -16,12 +16,25 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] private bool _isBenchmarkRunning;
     [ObservableProperty] private string _benchmarkResult = "-";
     [ObservableProperty] private string _statusText = "";
+    [ObservableProperty] private int _decryptionWorkerCount;
+    [ObservableProperty] private double _benchmarkWorkloadIndex = 3;
 
     public ObservableCollection<LanguageOption> LanguageOptions { get; } = [];
     public bool CanRunBenchmark => !IsBenchmarkRunning;
+    public int MaximumDecryptionWorkerCount => AppSettingsService.MaximumDecryptionWorkerCount;
+    public string DecryptionWorkerCountHint => L.Settings_DecryptionThreadsHint(MaximumDecryptionWorkerCount);
+    public string BenchmarkWorkerCountText => L.Benchmark_Threads(DecryptionWorkerCount);
+    public double MaximumBenchmarkWorkloadIndex => CsaBenchmarkService.MeasurementBatchOptionValues.Count - 1;
+    public string BenchmarkWorkloadText => L.Benchmark_WorkloadBatches(BenchmarkMeasurementBatches, BenchmarkMeasurementBatches * CsaBenchmarkService.BatchSize);
+    public string BenchmarkWorkloadHint => L.Benchmark_WorkloadHint;
+    public string BenchmarkWorkloadMinimumText => CsaBenchmarkService.MeasurementBatchOptionValues[0].ToString("N0");
+    public string BenchmarkWorkloadMaximumText => CsaBenchmarkService.MeasurementBatchOptionValues[^1].ToString("N0");
+    private int BenchmarkMeasurementBatches => CsaBenchmarkService.MeasurementBatchOptionValues[(int)BenchmarkWorkloadIndex];
 
     public SettingsViewModel()
     {
+        DecryptionWorkerCount = AppSettingsService.DecryptionWorkerCount;
+        BenchmarkWorkloadIndex = GetBenchmarkWorkloadIndex(AppSettingsService.BenchmarkMeasurementBatches);
         RefreshLanguageOptions(LocalizationService.Mode);
     }
 
@@ -40,7 +53,7 @@ public partial class SettingsViewModel : ViewModelBase
         _benchmarkCts = new CancellationTokenSource();
         try
         {
-            CsaBenchmarkResult result = await CsaBenchmarkService.RunAsync(_benchmarkCts.Token);
+            CsaBenchmarkResult result = await CsaBenchmarkService.RunAsync(DecryptionWorkerCount, BenchmarkMeasurementBatches, _benchmarkCts.Token);
             BenchmarkResult = ThroughputFormatter.Format(result.BytesPerSecond);
             StatusText = "";
         }
@@ -59,6 +72,45 @@ public partial class SettingsViewModel : ViewModelBase
             _benchmarkCts?.Dispose();
             _benchmarkCts = null;
         }
+    }
+
+    public bool TrySave(out Exception? exception) => AppSettingsService.TrySave(DecryptionWorkerCount, BenchmarkMeasurementBatches, out exception);
+
+    partial void OnDecryptionWorkerCountChanged(int value)
+    {
+        int coerced = AppSettingsService.CoerceDecryptionWorkerCount(value);
+        if (value != coerced)
+        {
+            DecryptionWorkerCount = coerced;
+        }
+
+        OnPropertyChanged(nameof(BenchmarkWorkerCountText));
+    }
+
+    partial void OnIsBenchmarkRunningChanged(bool value) => OnPropertyChanged(nameof(CanRunBenchmark));
+
+    partial void OnBenchmarkWorkloadIndexChanged(double value)
+    {
+        double coerced = Math.Clamp(Math.Round(value), 0, MaximumBenchmarkWorkloadIndex);
+        if (value != coerced)
+        {
+            BenchmarkWorkloadIndex = coerced;
+            return;
+        }
+
+        OnPropertyChanged(nameof(BenchmarkWorkloadText));
+    }
+
+    private static int GetBenchmarkWorkloadIndex(int measurementBatches)
+    {
+        IReadOnlyList<int> options = CsaBenchmarkService.MeasurementBatchOptionValues;
+        int coerced = CsaBenchmarkService.CoerceMeasurementBatches(measurementBatches);
+        for (int index = 0; index < options.Count; index++)
+        {
+            if (options[index] == coerced) return index;
+        }
+
+        return 0;
     }
 
     private void RefreshLanguageOptions(LanguageMode selectedMode)

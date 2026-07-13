@@ -55,6 +55,10 @@
   <data name="Benchmark.Run"><value>執行 Benchmark</value></data>
   <data name="Benchmark.Running"><value>測量中</value></data>
   <data name="Benchmark.Title"><value>核心 Benchmark</value></data>
+  <data name="Benchmark.Threads"><value>使用 {0} 個解密執行緒</value></data>
+  <data name="Benchmark.Workload"><value>測量工作量</value></data>
+  <data name="Benchmark.WorkloadBatches"><value>{0:N0} 個批次 · {1:N0} 個封包</value></data>
+  <data name="Benchmark.WorkloadHint"><value>較大的工作量可降低高速機器上的計時雜訊。</value></data>
   <data name="Column.Decrypted"><value>已解密</value></data>
   <data name="Column.Elapsed"><value>耗時</value></data>
   <data name="Column.Eta"><value>剩餘時間</value></data>
@@ -80,6 +84,8 @@
   <data name="Main.Delete"><value>刪除</value></data>
   <data name="Main.GlobalSpeed"><value>全域速度</value></data>
   <data name="Main.Concurrency"><value>並行</value></data>
+  <data name="Main.DecryptionThreads"><value>解密執行緒</value></data>
+  <data name="Main.DecryptionThreadsHint"><value>請在設定中調整解密執行緒數。</value></data>
   <data name="Main.ShowDetails"><value>詳情</value></data>
   <data name="Main.CollapseDetails"><value>收起詳情</value></data>
   <data name="Main.RunningCount"><value>執行中 {0}，等待中 {1}</value></data>
@@ -90,10 +96,16 @@
   <data name="Main.Stop"><value>停止</value></data>
   <data name="Main.StopAll"><value>全部停止</value></data>
   <data name="Settings.Description"><value>選擇整個應用程式使用的語言。</value></data>
+  <data name="Settings.DecryptionThreads"><value>解密執行緒數</value></data>
+  <data name="Settings.DecryptionThreadsHint"><value>每個解密工作可使用 1 至 {0} 個工作執行緒。Benchmark 使用目前數值。</value></data>
   <data name="Settings.General"><value>一般</value></data>
   <data name="Settings.Language"><value>語言</value></data>
   <data name="Settings.Save"><value>完成</value></data>
   <data name="Settings.Title"><value>設定</value></data>
+  <data name="TextBoxMenu.Copy"><value>複製</value></data>
+  <data name="TextBoxMenu.Cut"><value>剪下</value></data>
+  <data name="TextBoxMenu.Paste"><value>貼上</value></data>
+  <data name="TextBoxMenu.SelectAll"><value>全選</value></data>
   <data name="Status.Canceled"><value>已取消</value></data>
   <data name="Status.Completed"><value>已完成</value></data>
   <data name="Status.Failed"><value>失敗</value></data>

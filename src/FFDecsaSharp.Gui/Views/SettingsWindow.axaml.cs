@@ -17,7 +17,16 @@ public partial class SettingsWindow : ShadUI.Window
         DataContext = _viewModel;
     }
 
-    private void Save_Click(object? sender, RoutedEventArgs e) => Close(true);
+    private void Save_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_viewModel.TrySave(out Exception? exception))
+        {
+            Close(true);
+            return;
+        }
+
+        _viewModel.StatusText = exception?.Message ?? "Unable to save settings.";
+    }
 
     private void Cancel_Click(object? sender, RoutedEventArgs e)
     {

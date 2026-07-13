@@ -55,6 +55,10 @@
   <data name="Benchmark.Run"><value>Run benchmark</value></data>
   <data name="Benchmark.Running"><value>Measuring</value></data>
   <data name="Benchmark.Title"><value>Core benchmark</value></data>
+  <data name="Benchmark.Threads"><value>Using {0} decryption threads</value></data>
+  <data name="Benchmark.Workload"><value>Measurement workload</value></data>
+  <data name="Benchmark.WorkloadBatches"><value>{0:N0} batches · {1:N0} packets</value></data>
+  <data name="Benchmark.WorkloadHint"><value>Use a larger workload to reduce timing noise on faster machines.</value></data>
   <data name="Column.Decrypted"><value>Decrypted</value></data>
   <data name="Column.Elapsed"><value>Elapsed</value></data>
   <data name="Column.Eta"><value>Remaining</value></data>
@@ -80,6 +84,8 @@
   <data name="Main.Delete"><value>Delete</value></data>
   <data name="Main.GlobalSpeed"><value>Global speed</value></data>
   <data name="Main.Concurrency"><value>Concurrency</value></data>
+  <data name="Main.DecryptionThreads"><value>Decrypt threads</value></data>
+  <data name="Main.DecryptionThreadsHint"><value>Adjust decryption threads in Settings.</value></data>
   <data name="Main.ShowDetails"><value>Details</value></data>
   <data name="Main.CollapseDetails"><value>Hide details</value></data>
   <data name="Main.RunningCount"><value>{0} running, {1} queued</value></data>
@@ -90,10 +96,16 @@
   <data name="Main.Stop"><value>Stop</value></data>
   <data name="Main.StopAll"><value>Stop all</value></data>
   <data name="Settings.Description"><value>Choose the language used throughout the application.</value></data>
+  <data name="Settings.DecryptionThreads"><value>Decryption threads</value></data>
+  <data name="Settings.DecryptionThreadsHint"><value>Use 1 to {0} workers per decryption task. Benchmark uses the current value.</value></data>
   <data name="Settings.General"><value>General</value></data>
   <data name="Settings.Language"><value>Language</value></data>
   <data name="Settings.Save"><value>Done</value></data>
   <data name="Settings.Title"><value>Settings</value></data>
+  <data name="TextBoxMenu.Copy"><value>Copy</value></data>
+  <data name="TextBoxMenu.Cut"><value>Cut</value></data>
+  <data name="TextBoxMenu.Paste"><value>Paste</value></data>
+  <data name="TextBoxMenu.SelectAll"><value>Select All</value></data>
   <data name="Status.Canceled"><value>Canceled</value></data>
   <data name="Status.Completed"><value>Completed</value></data>
   <data name="Status.Failed"><value>Failed</value></data>
