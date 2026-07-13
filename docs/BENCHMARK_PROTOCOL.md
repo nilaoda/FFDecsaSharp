@@ -35,3 +35,25 @@ It emits one `ffdecsa-x64-probe-v1` JSON object after seven measurements each of
 - the 128-lane column-major block core.
 
 The result includes `avx2`, vector width availability, `block_state_update_backend`, and `block_lookup_backend`. Compare medians on the same machine. The probe is diagnostic and is intentionally not comparable with the C protocol: its component measurements have different timed scopes.
+
+## Parallel decryption probe
+
+Use the parallel probe to measure how the current immutable `Decryptor` state
+scales when independent packet buffers are decrypted concurrently:
+
+```sh
+dotnet run -c Release --project src/FFDecsaSharp.PerfHarness/FFDecsaSharp.PerfHarness.csproj -- --parallel-probe
+```
+
+It measures one, then each power-of-two worker count, and finally the process's
+logical processor count when that is not already included. Each worker owns a
+separate 128-packet input, output, and result buffer; every worker shares one
+`Decryptor` instance. Workers run as dedicated long-running tasks so the probe
+measures decryptor concurrency rather than ThreadPool ramp-up behavior.
+
+The JSON uses the slowest worker's accumulated decrypt-only time as its
+critical path. Source-buffer copying, task startup, and synchronization are
+outside that timed interval. `aggregate_payload_megabytes_per_second` is the
+combined payload rate, while `scaling_vs_one_worker` compares that rate with
+the one-worker median from the same process. Every worker's final output is
+checked against the normal FFdecsa checksum.

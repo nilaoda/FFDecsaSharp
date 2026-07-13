@@ -19,9 +19,17 @@ internal static class Program
     private const int ProbeMeasurementIterations = 5_000;
     private const ulong ExpectedOutputHash = 0x76DC3CFC07B7D0F2UL;
 
-    private static int Main(string[] args) => args.AsSpan().Contains("--probe", StringComparer.Ordinal)
-        ? RunProbe()
-        : RunProtocol();
+    private static int Main(string[] args)
+    {
+        if (args.AsSpan().Contains("--parallel-probe", StringComparer.Ordinal))
+        {
+            return RunParallelProbe();
+        }
+
+        return args.AsSpan().Contains("--probe", StringComparer.Ordinal)
+            ? RunProbe()
+            : RunProtocol();
+    }
 
     private static int RunProtocol()
     {
@@ -144,6 +152,49 @@ internal static class Program
         return 0;
     }
 
+    private static int RunParallelProbe()
+    {
+        ReadOnlySpan<byte> even = [0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x00];
+        ReadOnlySpan<byte> odd = [0x0F, 0x1E, 0x2D, 0x3C, 0x4B, 0x5A, 0x69, 0x78];
+        if (!ControlWords.TryCreate(even, odd, out ControlWords controlWords)
+            || !Decryptor.TryCreate(controlWords, out Decryptor? decryptor))
+        {
+            return 1;
+        }
+
+        Decryptor initializedDecryptor = decryptor!;
+        int[] workerCounts = GetParallelWorkerCounts(Environment.ProcessorCount);
+        var results = new ParallelProbeResult[workerCounts.Length];
+        for (int index = 0; index < workerCounts.Length; index++)
+        {
+            int workerCount = workerCounts[index];
+            ParallelWorkerState[] workers = CreateParallelWorkers(workerCount);
+            RunParallelDecrypt(initializedDecryptor, workers, ProbeWarmupIterations);
+
+            double[] samples = new double[ProbeSampleCount];
+            for (int sample = 0; sample < samples.Length; sample++)
+            {
+                long criticalPathTicks = RunParallelDecrypt(initializedDecryptor, workers, ProbeMeasurementIterations);
+                samples[sample] = criticalPathTicks * (1_000_000_000d / Stopwatch.Frequency)
+                    / (ProbeMeasurementIterations * (double)BatchSize);
+            }
+
+            if (!VerifyParallelWorkers(workers))
+            {
+                return 5;
+            }
+
+            results[index] = new ParallelProbeResult(workerCount, samples);
+        }
+
+        double oneWorkerMedian = Median(results[0].NanosecondsPerPacketSamples);
+        string rows = string.Join(',', results.Select(result => FormatParallelProbeResult(result, oneWorkerMedian)));
+        Console.WriteLine(string.Create(
+            CultureInfo.InvariantCulture,
+            $"{{\"format\":\"ffdecsa-parallel-probe-v1\",\"runtime\":\"{Environment.Version}\",\"architecture\":\"{RuntimeInformation.ProcessArchitecture}\",\"logical_processors\":{Environment.ProcessorCount},\"worker_execution\":\"dedicated_long_running_tasks\",\"decryptor_instances\":1,\"packet_buffers_per_worker\":1,\"batch_packets_per_worker\":{BatchSize},\"samples_per_worker_count\":{ProbeSampleCount},\"warmup_batches_per_worker\":{ProbeWarmupIterations},\"measurement_batches_per_worker\":{ProbeMeasurementIterations},\"timed_scope\":\"decrypt_only_per_worker_critical_path\",\"copy_in_timed_scope\":false,\"payload_bytes_per_packet\":{PayloadSize},\"output_fnv1a64\":\"{ExpectedOutputHash:X16}\",\"results\":[{rows}],\"verified\":true}}"));
+        return 0;
+    }
+
     private static double[] MeasureDecrypt(Decryptor decryptor, byte[] source, byte[] packets, PacketDecryptionResult[] results)
     {
         for (int iteration = 0; iteration < ProbeWarmupIterations; iteration++)
@@ -241,6 +292,127 @@ internal static class Program
 
     private static string EscapeJson(string value) => value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal);
 
+    private static int[] GetParallelWorkerCounts(int logicalProcessorCount)
+    {
+        var workerCounts = new List<int>();
+        for (int workerCount = 1; workerCount < logicalProcessorCount; workerCount *= 2)
+        {
+            workerCounts.Add(workerCount);
+        }
+
+        if (workerCounts.Count == 0 || workerCounts[^1] != logicalProcessorCount)
+        {
+            workerCounts.Add(logicalProcessorCount);
+        }
+
+        return workerCounts.ToArray();
+    }
+
+    private static ParallelWorkerState[] CreateParallelWorkers(int workerCount)
+    {
+        var workers = new ParallelWorkerState[workerCount];
+        for (int index = 0; index < workers.Length; index++)
+        {
+            byte[] source = new byte[PacketSize * BatchSize];
+            CreateSourcePackets(source);
+            workers[index] = new ParallelWorkerState(source, new byte[source.Length], new PacketDecryptionResult[BatchSize]);
+        }
+
+        return workers;
+    }
+
+    private static long RunParallelDecrypt(Decryptor decryptor, ParallelWorkerState[] workers, int batchCount)
+    {
+        using var ready = new CountdownEvent(workers.Length);
+        using var completed = new CountdownEvent(workers.Length);
+        using var start = new ManualResetEventSlim(false);
+        Task[] tasks = new Task[workers.Length];
+
+        for (int index = 0; index < workers.Length; index++)
+        {
+            ParallelWorkerState worker = workers[index];
+            tasks[index] = Task.Factory.StartNew(
+                () =>
+                {
+                    ready.Signal();
+                    start.Wait();
+
+                    long elapsedTicks = 0;
+                    try
+                    {
+                        for (int batchIndex = 0; batchIndex < batchCount; batchIndex++)
+                        {
+                            worker.Source.CopyTo(worker.Packets, 0);
+                            long started = Stopwatch.GetTimestamp();
+                            if (!decryptor.TryDecryptPackets(worker.Packets, worker.Results))
+                            {
+                                throw new InvalidOperationException("Parallel decryption failed.");
+                            }
+
+                            elapsedTicks += Stopwatch.GetTimestamp() - started;
+                        }
+
+                        worker.ElapsedTicks = elapsedTicks;
+                    }
+                    catch (Exception exception)
+                    {
+                        worker.Exception = exception;
+                    }
+                    finally
+                    {
+                        completed.Signal();
+                    }
+                },
+                CancellationToken.None,
+                TaskCreationOptions.LongRunning,
+                TaskScheduler.Default);
+        }
+
+        ready.Wait();
+        start.Set();
+        completed.Wait();
+        Task.WaitAll(tasks);
+
+        Exception? exception = workers.Select(static worker => worker.Exception).FirstOrDefault(static exception => exception is not null);
+        if (exception is not null)
+        {
+            throw new InvalidOperationException("Parallel probe failed.", exception);
+        }
+
+        return workers.Max(static worker => worker.ElapsedTicks);
+    }
+
+    private static bool VerifyParallelWorkers(IEnumerable<ParallelWorkerState> workers)
+    {
+        foreach (ParallelWorkerState worker in workers)
+        {
+            if (ComputeFnv1a64(worker.Packets) != ExpectedOutputHash)
+            {
+                return false;
+            }
+
+            foreach (PacketDecryptionResult result in worker.Results)
+            {
+                if (result != PacketDecryptionResult.Decrypted)
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private static string FormatParallelProbeResult(ParallelProbeResult result, double oneWorkerMedian)
+    {
+        double median = Median(result.NanosecondsPerPacketSamples);
+        double packetsPerSecond = result.WorkerCount * (1_000_000_000d / median);
+        double megabytesPerSecond = (packetsPerSecond * PayloadSize) / 1_000_000d;
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"{{\"workers\":{result.WorkerCount},\"nanoseconds_per_packet\":{{\"samples\":[{FormatSamples(result.NanosecondsPerPacketSamples)}],\"min\":{result.NanosecondsPerPacketSamples.Min():F3},\"median\":{median:F3},\"max\":{result.NanosecondsPerPacketSamples.Max():F3}}},\"aggregate_packets_per_second\":{packetsPerSecond:F3},\"aggregate_payload_megabytes_per_second\":{megabytesPerSecond:F3},\"scaling_vs_one_worker\":{oneWorkerMedian / median * result.WorkerCount:F3}}}");
+    }
+
     private static void CreateSourcePackets(Span<byte> source)
     {
         for (int packetIndex = 0; packetIndex < BatchSize; packetIndex++)
@@ -284,4 +456,26 @@ internal static class Program
 
         return hash;
     }
+
+    private sealed class ParallelWorkerState
+    {
+        public ParallelWorkerState(byte[] source, byte[] packets, PacketDecryptionResult[] results)
+        {
+            Source = source;
+            Packets = packets;
+            Results = results;
+        }
+
+        public byte[] Source { get; }
+
+        public byte[] Packets { get; }
+
+        public PacketDecryptionResult[] Results { get; }
+
+        public long ElapsedTicks { get; set; }
+
+        public Exception? Exception { get; set; }
+    }
+
+    private readonly record struct ParallelProbeResult(int WorkerCount, double[] NanosecondsPerPacketSamples);
 }
