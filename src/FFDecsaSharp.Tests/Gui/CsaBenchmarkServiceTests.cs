@@ -1,4 +1,4 @@
-using FFDecsaSharp.Gui;
+using FFDecsaSharp.Gui.Services;
 
 namespace FFDecsaSharp.Tests.Gui;
 
