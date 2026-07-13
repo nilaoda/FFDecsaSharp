@@ -41,6 +41,38 @@ bool accepted = decryptor.TryDecryptPackets(packetBuffer, results);
 
 `TryDecryptPackets` returns `false` only when the input length is not a multiple of 188 bytes or the result span is too short. It reports per-packet validation and decryption outcomes through `results`.
 
+## Measured Performance
+
+The following single-thread measurements use the normalized `ffdecsa-compare-v1`
+protocol: 128 full-payload packets per batch, 5,000 warmup batches, 30,000
+measured batches, packet copying outside the timed window, and the same
+deterministic input and output checksum for C# and C. Throughput is decimal
+payload MB/s (`184` payload bytes per packet), not the 188-byte transport rate.
+
+| Host | Implementation | ns/packet | Payload throughput | Relative to C |
+|---|---|---:|---:|---:|
+| Apple M4 / .NET 10.0.8 / Arm64 | FFDecsaSharp | 512.257 | 359.2 MB/s | 97.0% |
+| Apple M4 / Apple Clang FFdecsa `PARALLEL_128_2LONG` | C reference | ≈496.7 | ≈370.4 MB/s | 100% |
+| Intel Core i5-10400F / .NET 10.0.8 / AVX2 | FFDecsaSharp | 1030.722 | 178.5 MB/s | 108.3% |
+| Intel Core i5-10400F / Zig `cc -O3 -march=native` FFdecsa `PARALLEL_128_2LONG` | C reference | 1116.328 | 164.8 MB/s | 100% |
+
+The Arm64 release probe on the local M4 has also reported approximately
+**355 MB/s** single-thread payload throughput in a short multi-sample run.
+Small differences from the normalized table are expected from CPU frequency,
+run order, and the probe's different sample structure.
+
+Multi-threaded decryption can increase aggregate throughput substantially
+because `Decryptor` shares only immutable key schedules and each worker owns a
+non-overlapping packet range. The dedicated-worker probe on the same M4
+measured **346.8 MB/s** with one worker and **1729.8 MB/s** with ten workers
+(about **5.0×**). That probe measures decrypt-only worker critical-path time;
+actual file throughput also depends on block size, memory/cache behavior,
+synchronization, storage, and CPU thermals. Configure the GUI worker count and
+benchmark workload to tune for the target machine.
+
+These C comparisons are against FFdecsa's `PARALLEL_128_2LONG` reference
+configuration, not a claim against every possible native FFdecsa backend.
+
 ## Build And Test
 
 ```sh
