@@ -11,7 +11,7 @@ The library is span-first, NativeAOT-compatible, and keeps packet decryption pat
 - Provides single-packet and contiguous batch APIs.
 - Batches up to 128 full-payload packets per control word, including packets interleaved by key parity.
 - Covers every packet shape exercised by the upstream FFdecsa test driver.
-- Does not currently provide encryption or a GUI application.
+- Does not currently provide encryption.
 
 ## Use
 
@@ -70,7 +70,9 @@ Both commands emit the same JSON schema. See `docs/BENCHMARK_PROTOCOL.md` for th
 - `src/FFDecsaSharp.Benchmarks`: BenchmarkDotNet performance checks.
 - `src/FFDecsaSharp.PerfHarness`: dependency-free, machine-readable throughput harness.
 - `tools/ffdecsa-compare`: FFdecsa reference build and matching throughput harness.
-- `src/FFDecsaSharp.Gui`: reserved assembly for a future Avalonia front end.
+- `tools/StreamSboxSynthesis`: stream S-box synthesis tool.
+- `src/FFDecsaSharp.Gui`: Avalonia GUI application.
+- `src/FFDecsaSharp.Gui.Generators`: source generator for the GUI.
 - `references/FFdecsa`: upstream source retained for calibration and compatibility study.
 
 ## Verification
