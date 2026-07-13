@@ -1,7 +1,12 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
 #include <time.h>
+#endif
 
 #include "FFdecsa.h"
 
@@ -29,10 +34,18 @@ static void create_source_packets(void) {
   }
 }
 
+#ifdef _WIN32
+static LARGE_INTEGER timer_frequency;
+
+static uint64_t elapsed_nanoseconds(const LARGE_INTEGER *start, const LARGE_INTEGER *end) {
+  return (uint64_t)(((end->QuadPart - start->QuadPart) * UINT64_C(1000000000)) / timer_frequency.QuadPart);
+}
+#else
 static uint64_t elapsed_nanoseconds(const struct timespec *start, const struct timespec *end) {
   return ((uint64_t)(end->tv_sec - start->tv_sec) * UINT64_C(1000000000))
       + (uint64_t)(end->tv_nsec - start->tv_nsec);
 }
+#endif
 
 static uint64_t compute_fnv1a64(const unsigned char *data, size_t length) {
   size_t index;
@@ -55,8 +68,17 @@ int main(void) {
   static const unsigned char even[8] = {0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x00};
   static const unsigned char odd[8] = {0x0f, 0x1e, 0x2d, 0x3c, 0x4b, 0x5a, 0x69, 0x78};
   void *keys = get_key_struct();
+#ifdef _WIN32
+  LARGE_INTEGER start;
+  LARGE_INTEGER end;
+  if (!QueryPerformanceFrequency(&timer_frequency)) {
+    free_key_struct(keys);
+    return 6;
+  }
+#else
   struct timespec start;
   struct timespec end;
+#endif
   uint64_t total_nanoseconds = 0;
   uint64_t expected_hash;
   uint64_t actual_hash;
@@ -89,12 +111,20 @@ int main(void) {
   for (iteration = 0; iteration < MEASUREMENT_BATCHES; iteration++) {
     memcpy(packets, source, sizeof(packets));
     prepare_cluster();
+#ifdef _WIN32
+    QueryPerformanceCounter(&start);
+#else
     clock_gettime(CLOCK_MONOTONIC, &start);
+#endif
     if (decrypt_packets(keys, cluster) != BATCH_SIZE) {
       free_key_struct(keys);
       return 4;
     }
+#ifdef _WIN32
+    QueryPerformanceCounter(&end);
+#else
     clock_gettime(CLOCK_MONOTONIC, &end);
+#endif
     total_nanoseconds += elapsed_nanoseconds(&start, &end);
   }
 

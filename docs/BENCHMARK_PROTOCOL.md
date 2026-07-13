@@ -19,3 +19,19 @@ tools/ffdecsa-compare/run-reference.sh
 ```
 
 The reference script compiles upstream FFdecsa with `PARALLEL_128_2LONG`. Set `CC` to select another native compiler. The generated executable is written under the ignored `artifacts/` directory by default.
+
+## X64 component probe
+
+Use the managed probe when a short-lived x64 machine is available:
+
+```sh
+dotnet run -c Release --project src/FFDecsaSharp.PerfHarness/FFDecsaSharp.PerfHarness.csproj -- --probe
+```
+
+It emits one `ffdecsa-x64-probe-v1` JSON object after seven measurements each of:
+
+- end-to-end 128-packet decrypt throughput;
+- the 128-lane bitsliced stream kernel; and
+- the 128-lane column-major block core.
+
+The result includes `avx2`, vector width availability, `block_state_update_backend`, and `block_lookup_backend`. Compare medians on the same machine. The probe is diagnostic and is intentionally not comparable with the C protocol: its component measurements have different timed scopes.

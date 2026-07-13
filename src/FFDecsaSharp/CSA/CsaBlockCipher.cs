@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.Arm;
+using System.Runtime.Intrinsics.X86;
 
 namespace FFDecsaSharp.CSA;
 
@@ -9,6 +10,28 @@ internal static class CsaBlockCipher
 {
     public const int BlockSize = 8;
     private const int StateLength = 64;
+
+    internal static string ColumnMajor128StateUpdateBackend => !UseWideStateUpdate
+        ? "vector128"
+        : UseVector512StateUpdate
+            ? "vector512"
+            : "vector256";
+
+    internal static string TransformLookupBackend => AdvSimd.Arm64.IsSupported
+        ? "arm64-tbl-tbx"
+        : UseAvx512VbmiLookup
+            ? "x64-avx512-vbmi-lookup-experimental"
+        : UseInterleavedTransformOutput
+            ? "x64-packed-ushort-lookup"
+        : UseNormalizedInputPointerLookup
+            ? "x64-normalized-input-pointer"
+        : "scalar-ushort-table";
+
+    internal static string ColumnMajor128CoreBackend => "specialized-column-major";
+
+    internal static string TransformOutputLayoutBackend => UseInterleavedTransformOutput
+        ? "x64-interleaved-ushort"
+        : "separate-byte-columns-control";
 
     public static bool TryDecipherBlock(ReadOnlySpan<byte> blockSchedule, ReadOnlySpan<byte> input, Span<byte> output)
     {
@@ -194,7 +217,7 @@ internal static class CsaBlockCipher
             int stateOffset6 = (offset + 6) * blockCount;
             int stateOffset8 = (offset + 8) * blockCount;
             int updateIndex = 0;
-            if (Vector512.IsHardwareAccelerated)
+            if (UseVector512StateUpdate)
             {
                 for (; updateIndex <= blockCount - Vector512<byte>.Count; updateIndex += Vector512<byte>.Count)
                 {
@@ -213,7 +236,7 @@ internal static class CsaBlockCipher
                 }
             }
 
-            if (Vector256.IsHardwareAccelerated)
+            if (UseWideStateUpdate)
             {
                 for (; updateIndex <= blockCount - Vector256<byte>.Count; updateIndex += Vector256<byte>.Count)
                 {
@@ -289,6 +312,10 @@ internal static class CsaBlockCipher
         ref byte permutationReference = ref MemoryMarshal.GetReference(permutationOutput);
         ReadOnlySpan<ushort> transform = BlockTransform;
         ref ushort transformReference = ref MemoryMarshal.GetReference(transform);
+        Span<ushort> interleavedTransformOutput = UseInterleavedTransformOutput
+            ? stackalloc ushort[LaneCount]
+            : default;
+        ref ushort interleavedTransformReference = ref MemoryMarshal.GetReference(interleavedTransformOutput);
 
         // Column-major load with fixed 128-lane stride: state[(offset+b)*128 + lane] = input[lane*8 + b]
         for (int lane = 0; lane < LaneCount; lane++)
@@ -309,13 +336,25 @@ internal static class CsaBlockCipher
         {
             int sBoxInputOffset = (offset + 6) * ColumnStride;
             byte roundKey = Unsafe.Add(ref blockScheduleReference, round);
-            PopulateTransformOutputs128(
-                ref transformReference,
-                roundKey,
-                ref stateReference,
-                sBoxInputOffset,
-                ref sBoxReference,
-                ref permutationReference);
+            if (UseInterleavedTransformOutput)
+            {
+                PopulateInterleavedTransformOutputs128(
+                    ref transformReference,
+                    roundKey,
+                    ref stateReference,
+                    sBoxInputOffset,
+                    ref interleavedTransformReference);
+            }
+            else
+            {
+                PopulateTransformOutputs128(
+                    ref transformReference,
+                    roundKey,
+                    ref stateReference,
+                    sBoxInputOffset,
+                    ref sBoxReference,
+                    ref permutationReference);
+            }
 
             offset--;
             int stateOffset = offset * ColumnStride;
@@ -326,7 +365,36 @@ internal static class CsaBlockCipher
             int stateOffset8 = stateOffset + (8 * ColumnStride);
 
             // Arm64 path: fully unrolled eight Vector128 updates cover all 128 lanes.
+            // On x64, use the wider generic vectors when available. The dedicated 128-lane
+            // path otherwise bypasses the Vector256/Vector512 updates used by the generic core.
+            if (UseInterleavedTransformOutput)
             {
+                UpdateStateColumns128Interleaved(
+                    ref stateReference,
+                    ref interleavedTransformReference,
+                    stateOffset,
+                    stateOffset2,
+                    stateOffset3,
+                    stateOffset4,
+                    stateOffset6,
+                    stateOffset8);
+            }
+            else if (UseWideStateUpdate)
+            {
+                UpdateStateColumns128Wide(
+                    ref stateReference,
+                    ref sBoxReference,
+                    ref permutationReference,
+                    stateOffset,
+                    stateOffset2,
+                    stateOffset3,
+                    stateOffset4,
+                    stateOffset6,
+                    stateOffset8);
+            }
+            if (!UseInterleavedTransformOutput && !UseWideStateUpdate)
+            {
+                {
                 Vector128<byte> state0 = Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset8 + 0))
                     ^ Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref sBoxReference, 0));
                 Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset + 0), state0);
@@ -343,7 +411,7 @@ internal static class CsaBlockCipher
                 Unsafe.WriteUnaligned(
                     ref Unsafe.Add(ref stateReference, stateOffset2 + 0),
                     Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset2 + 0)) ^ state0);
-            }
+                }
             {
                 Vector128<byte> state0 = Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset8 + 16))
                     ^ Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref sBoxReference, 16));
@@ -470,6 +538,7 @@ internal static class CsaBlockCipher
                     ref Unsafe.Add(ref stateReference, stateOffset2 + 112),
                     Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref stateReference, stateOffset2 + 112)) ^ state0);
             }
+            }
         }
 
         // Column-major store with fixed stride.
@@ -488,9 +557,110 @@ internal static class CsaBlockCipher
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void UpdateStateColumns128Wide(
+        ref byte stateReference,
+        ref byte sBoxReference,
+        ref byte permutationReference,
+        int stateOffset,
+        int stateOffset2,
+        int stateOffset3,
+        int stateOffset4,
+        int stateOffset6,
+        int stateOffset8)
+    {
+        int updateIndex = 0;
+        if (UseVector512StateUpdate)
+        {
+            for (; updateIndex <= BitSlice.BitSliceBlock.MaxLaneCount - Vector512<byte>.Count; updateIndex += Vector512<byte>.Count)
+            {
+                Vector512<byte> state0 = Unsafe.ReadUnaligned<Vector512<byte>>(ref Unsafe.Add(ref stateReference, stateOffset8 + updateIndex))
+                    ^ Unsafe.ReadUnaligned<Vector512<byte>>(ref Unsafe.Add(ref sBoxReference, updateIndex));
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset + updateIndex), state0);
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset6 + updateIndex),
+                    Unsafe.ReadUnaligned<Vector512<byte>>(ref Unsafe.Add(ref stateReference, stateOffset6 + updateIndex))
+                    ^ Unsafe.ReadUnaligned<Vector512<byte>>(ref Unsafe.Add(ref permutationReference, updateIndex)));
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset4 + updateIndex),
+                    Unsafe.ReadUnaligned<Vector512<byte>>(ref Unsafe.Add(ref stateReference, stateOffset4 + updateIndex)) ^ state0);
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset3 + updateIndex),
+                    Unsafe.ReadUnaligned<Vector512<byte>>(ref Unsafe.Add(ref stateReference, stateOffset3 + updateIndex)) ^ state0);
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset2 + updateIndex),
+                    Unsafe.ReadUnaligned<Vector512<byte>>(ref Unsafe.Add(ref stateReference, stateOffset2 + updateIndex)) ^ state0);
+            }
+        }
+
+        for (; updateIndex <= BitSlice.BitSliceBlock.MaxLaneCount - Vector256<byte>.Count; updateIndex += Vector256<byte>.Count)
+        {
+            Vector256<byte> state0 = Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref stateReference, stateOffset8 + updateIndex))
+                ^ Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref sBoxReference, updateIndex));
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset + updateIndex), state0);
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset6 + updateIndex),
+                Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref stateReference, stateOffset6 + updateIndex))
+                ^ Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref permutationReference, updateIndex)));
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset4 + updateIndex),
+                Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref stateReference, stateOffset4 + updateIndex)) ^ state0);
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset3 + updateIndex),
+                Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref stateReference, stateOffset3 + updateIndex)) ^ state0);
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset2 + updateIndex),
+                Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref stateReference, stateOffset2 + updateIndex)) ^ state0);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void UpdateStateColumns128Interleaved(
+        ref byte stateReference,
+        ref ushort transformReference,
+        int stateOffset,
+        int stateOffset2,
+        int stateOffset3,
+        int stateOffset4,
+        int stateOffset6,
+        int stateOffset8)
+    {
+        for (int updateIndex = 0; updateIndex < BitSlice.BitSliceBlock.MaxLaneCount; updateIndex += Vector256<byte>.Count)
+        {
+            Vector256<byte> sBoxOutput = ExtractInterleavedTransformBytes(
+                ref transformReference,
+                updateIndex,
+                InterleavedSBoxShuffleMask);
+            Vector256<byte> permutationOutput = ExtractInterleavedTransformBytes(
+                ref transformReference,
+                updateIndex,
+                InterleavedPermutationShuffleMask);
+            Vector256<byte> state0 = Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref stateReference, stateOffset8 + updateIndex))
+                ^ sBoxOutput;
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset + updateIndex), state0);
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset6 + updateIndex),
+                Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref stateReference, stateOffset6 + updateIndex))
+                ^ permutationOutput);
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset4 + updateIndex),
+                Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref stateReference, stateOffset4 + updateIndex)) ^ state0);
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset3 + updateIndex),
+                Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref stateReference, stateOffset3 + updateIndex)) ^ state0);
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref stateReference, stateOffset2 + updateIndex),
+                Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref stateReference, stateOffset2 + updateIndex)) ^ state0);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Vector256<byte> ExtractInterleavedTransformBytes(
+        ref ushort transformReference,
+        int transformOffset,
+        Vector256<byte> shuffleMask)
+    {
+        ref byte byteReference = ref Unsafe.As<ushort, byte>(ref Unsafe.Add(ref transformReference, transformOffset));
+        Vector256<byte> lower = Avx2.Shuffle(Unsafe.ReadUnaligned<Vector256<byte>>(ref byteReference), shuffleMask);
+        Vector256<byte> upper = Avx2.Shuffle(
+            Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref byteReference, Vector256<byte>.Count)),
+            shuffleMask);
+        Vector256<byte> packedLower = Avx2.PermuteVar8x32(lower.AsInt32(), InterleavedDwordOrder).AsByte();
+        Vector256<byte> packedUpper = Avx2.PermuteVar8x32(upper.AsInt32(), InterleavedDwordOrder).AsByte();
+        return Avx2.Permute2x128(packedLower, packedUpper, 0x20);
+    }
+
     private static void PopulateTransformOutputs128(
         ref ushort transformReference,
-        byte roundKey,
+        nint roundKey,
         ref byte stateReference,
         int sBoxInputOffset,
         ref byte sBoxReference,
@@ -499,12 +669,29 @@ internal static class CsaBlockCipher
         if (AdvSimd.Arm64.IsSupported)
         {
             PopulateTransformOutputs128Arm64(
-                roundKey,
+                (byte)roundKey,
                 ref stateReference,
                 sBoxInputOffset,
                 ref sBoxReference,
                 ref permutationReference);
             return;
+        }
+
+        if (UseAvx512VbmiLookup)
+        {
+            PopulateTransformOutputs128Avx512Vbmi(
+                (byte)roundKey,
+                ref stateReference,
+                sBoxInputOffset,
+                ref sBoxReference,
+                ref permutationReference);
+            return;
+        }
+
+        if (UseNormalizedInputPointerLookup)
+        {
+            stateReference = ref Unsafe.Add(ref stateReference, sBoxInputOffset);
+            sBoxInputOffset = 0;
         }
 
         ushort transformed;
@@ -895,6 +1082,85 @@ internal static class CsaBlockCipher
     }
 
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private static void PopulateInterleavedTransformOutputs128(
+        ref ushort transformReference,
+        nint roundKey,
+        ref byte stateReference,
+        int sBoxInputOffset,
+        ref ushort outputReference)
+    {
+        stateReference = ref Unsafe.Add(ref stateReference, sBoxInputOffset);
+        StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 0); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 1); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 2); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 3); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 4); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 5); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 6); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 7);
+        StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 8); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 9); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 10); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 11); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 12); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 13); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 14); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 15);
+        StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 16); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 17); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 18); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 19); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 20); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 21); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 22); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 23);
+        StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 24); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 25); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 26); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 27); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 28); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 29); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 30); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 31);
+        StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 32); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 33); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 34); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 35); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 36); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 37); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 38); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 39);
+        StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 40); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 41); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 42); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 43); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 44); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 45); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 46); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 47);
+        StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 48); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 49); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 50); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 51); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 52); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 53); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 54); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 55);
+        StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 56); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 57); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 58); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 59); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 60); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 61); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 62); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 63);
+        StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 64); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 65); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 66); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 67); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 68); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 69); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 70); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 71);
+        StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 72); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 73); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 74); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 75); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 76); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 77); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 78); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 79);
+        StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 80); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 81); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 82); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 83); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 84); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 85); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 86); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 87);
+        StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 88); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 89); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 90); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 91); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 92); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 93); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 94); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 95);
+        StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 96); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 97); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 98); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 99); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 100); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 101); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 102); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 103);
+        StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 104); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 105); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 106); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 107); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 108); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 109); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 110); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 111);
+        StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 112); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 113); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 114); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 115); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 116); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 117); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 118); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 119);
+        StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 120); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 121); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 122); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 123); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 124); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 125); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 126); StoreInterleavedTransform(ref transformReference, roundKey, ref stateReference, ref outputReference, 127);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void StoreInterleavedTransform(
+        ref ushort transformReference,
+        nint roundKey,
+        ref byte stateReference,
+        ref ushort outputReference,
+        nint index)
+    {
+        Unsafe.Add(ref outputReference, index) = Unsafe.Add(ref transformReference, roundKey ^ Unsafe.Add(ref stateReference, index));
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private static void PopulateTransformOutputs128Avx512Vbmi(
+        byte roundKey,
+        ref byte stateReference,
+        int sBoxInputOffset,
+        ref byte sBoxReference,
+        ref byte permutationReference)
+    {
+        ref byte sBoxTable = ref MemoryMarshal.GetArrayDataReference(BlockSBoxLookupTable);
+        ref byte permutationTable = ref MemoryMarshal.GetArrayDataReference(BlockPermutationLookupTable);
+        Vector512<byte> key = Vector512.Create(roundKey);
+
+        for (int lane = 0; lane < BitSlice.BitSliceBlock.MaxLaneCount; lane += Vector512<byte>.Count)
+        {
+            Vector512<byte> indexes = Unsafe.ReadUnaligned<Vector512<byte>>(
+                ref Unsafe.Add(ref stateReference, sBoxInputOffset + lane)) ^ key;
+            Unsafe.WriteUnaligned(
+                ref Unsafe.Add(ref sBoxReference, lane),
+                LookupTransformAvx512Vbmi(indexes, ref sBoxTable));
+            Unsafe.WriteUnaligned(
+                ref Unsafe.Add(ref permutationReference, lane),
+                LookupTransformAvx512Vbmi(indexes, ref permutationTable));
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Vector512<byte> LookupTransformAvx512Vbmi(Vector512<byte> indexes, ref byte tableReference)
+    {
+        Vector512<byte> table0 = Unsafe.ReadUnaligned<Vector512<byte>>(ref tableReference);
+        Vector512<byte> table1 = Unsafe.ReadUnaligned<Vector512<byte>>(ref Unsafe.Add(ref tableReference, Vector512<byte>.Count));
+        Vector512<byte> table2 = Unsafe.ReadUnaligned<Vector512<byte>>(ref Unsafe.Add(ref tableReference, 2 * Vector512<byte>.Count));
+        Vector512<byte> table3 = Unsafe.ReadUnaligned<Vector512<byte>>(ref Unsafe.Add(ref tableReference, 3 * Vector512<byte>.Count));
+        Vector512<byte> result = Avx512Vbmi.PermuteVar64x8x2(table0, indexes, table1);
+        Vector512<byte> highResult = Avx512Vbmi.PermuteVar64x8x2(
+            table2,
+            indexes - Vector512.Create((byte)128),
+            table3);
+        Vector512<byte> highMask = Vector512.LessThanOrEqual(Vector512.Create((byte)128), indexes);
+        return Vector512.ConditionalSelect(highMask, highResult, result);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static void PopulateTransformOutputs128Arm64(
         byte roundKey,
         ref byte stateReference,
@@ -977,9 +1243,55 @@ internal static class CsaBlockCipher
 
     private static readonly ushort[] BlockTransformTable = CreateBlockTransformTable();
 
+    private static readonly string StateUpdatePreference = Environment.GetEnvironmentVariable("FFDECSA_X64_STATE_UPDATE") ?? "auto";
+
+    private static readonly string BlockLookupPreference = Environment.GetEnvironmentVariable("FFDECSA_X64_BLOCK_LOOKUP") ?? "auto";
+
+    private static readonly bool UseWideStateUpdate = Vector256.IsHardwareAccelerated
+        && !string.Equals(StateUpdatePreference, "vector128", StringComparison.OrdinalIgnoreCase);
+
+    private static readonly bool UseVector512StateUpdate = Vector512.IsHardwareAccelerated
+        && !string.Equals(StateUpdatePreference, "vector256", StringComparison.OrdinalIgnoreCase);
+
+    private static readonly bool UseAvx512VbmiLookup = Avx512Vbmi.IsSupported
+        && string.Equals(BlockLookupPreference, "vbmi", StringComparison.OrdinalIgnoreCase);
+
+    private static readonly bool UseNormalizedInputPointerLookup = !AdvSimd.Arm64.IsSupported
+        && !UseAvx512VbmiLookup
+        && !string.Equals(BlockLookupPreference, "scalar", StringComparison.OrdinalIgnoreCase);
+
+    // The packed ushort table already contains permutation in its low byte and S-box output in
+    // its high byte. Keeping that representation until the AVX2 column update avoids two
+    // temporary byte-column writes per round. Set FFDECSA_X64_BLOCK_LAYOUT=separate to retain
+    // the former layout for cross-host regression comparisons or AVX-512 VBMI experiments.
+    private static readonly bool UseInterleavedTransformOutput = Avx2.IsSupported
+        && !string.Equals(Environment.GetEnvironmentVariable("FFDECSA_X64_BLOCK_LAYOUT"), "separate", StringComparison.OrdinalIgnoreCase);
+
+    private static readonly Vector256<byte> InterleavedPermutationShuffleMask = CreateInterleavedShuffleMask(0);
+
+    private static readonly Vector256<byte> InterleavedSBoxShuffleMask = CreateInterleavedShuffleMask(1);
+
+    private static readonly Vector256<int> InterleavedDwordOrder = Vector256.Create(0, 1, 4, 5, 0, 1, 4, 5);
+
     private static readonly byte[] BlockSBoxLookupTable = BlockSBox.ToArray();
 
     private static readonly byte[] BlockPermutationLookupTable = CreateBlockPermutationLookupTable();
+
+    private static Vector256<byte> CreateInterleavedShuffleMask(byte firstByteOffset)
+    {
+        Span<byte> mask = stackalloc byte[Vector256<byte>.Count];
+        for (int lane = 0; lane < Vector256<byte>.Count; lane += Vector128<byte>.Count)
+        {
+            for (int index = 0; index < 8; index++)
+            {
+                mask[lane + index] = (byte)(firstByteOffset + (2 * index));
+            }
+
+            mask.Slice(lane + 8, 8).Fill(0x80);
+        }
+
+        return Unsafe.ReadUnaligned<Vector256<byte>>(ref MemoryMarshal.GetReference(mask));
+    }
 
     private static ushort[] CreateBlockTransformTable()
     {

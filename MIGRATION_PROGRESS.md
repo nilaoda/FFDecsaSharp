@@ -1445,3 +1445,184 @@ Still open for pure-managed work:
 2. Stream packaging / register-window rewrites remain exhausted.
 3. Full-matrix stream transpose and native Arm64 helpers remain deferred /
    out-of-scope for the pure-managed scoreboard unless reopened explicitly.
+
+## 2026-07-13 — x64 validation probe and first AVX2 state-update path
+
+- Added a non-AOT self-contained x64 probe package script (`tools/x64-probe/package-x64-probe.sh`). It publishes the normal RyuJIT harness and packages a seven-sample diagnostic run for short-lived rented or borrowed machines.
+- The Windows package includes `Run-X64-Probe.cmd`, a double-click launcher that prints the probe JSON and waits for the user to copy it.
+- Added `FFDecsaSharp.PerfHarness --probe`. Its JSON reports architecture and ISA availability, selected block backends, plus independent end-to-end, stream, and block medians. This separates an x64 stream limitation from the known x64 scalar block-transform lookup fallback in a single short execution.
+- The fixed 128-lane block path now uses `Vector256<byte>` state updates whenever a 256-bit vector backend is available (and `Vector512<byte>` where available). Previously its Arm-oriented unrolled `Vector128` implementation bypassed the wider update logic already present in the generic block path.
+- Arm64 release probe verification: `architecture=Arm64`, `block_state_update_backend=vector128`, `block_lookup_backend=arm64-tbl-tbx`, end-to-end median `517.454 ns/packet`, stream median `135.447 ns/packet`, and block median `15.879 ns/block`.
+- Initial x64 throughput and ISA-path verification is recorded below; future x64 backend changes must be evaluated with the same probe before any throughput claim.
+
+### X64 probe result — AVX2 state update verified
+
+Received a seven-sample `ffdecsa-x64-probe-v1` result from an Intel Family 6 Model 183 machine running .NET 10.0.8:
+
+- `architecture=X64`, `avx2=true`, `vector256=true`, `vector512=false`.
+- `block_state_update_backend=vector256`: the new wide state-update path is selected and exercised.
+- `block_lookup_backend=scalar-ushort-table`: the Arm64 `TBL`/`TBX` lookup has no x64 equivalent yet, as expected.
+- End-to-end median: **852.885 ns/packet**, **215.738 MB/s**. The first `943.704 ns` sample is a startup/noise outlier; the remaining samples are `820.491–864.164 ns`.
+- Stream median: **162.481 ns/packet**.
+- Block median: **28.879 ns/block**.
+
+Comparison with the same revision's Arm64 probe (`517.454 ns/packet`, `135.447 ns/packet` stream, `15.879 ns/block`):
+
+- total x64 gap: **335.431 ns/packet**;
+- block-core gap: `(28.879 - 15.879) * 23 = 299.000 ns/packet` for the 23 CSA block operations;
+- stream gap: **27.034 ns/packet**.
+
+Therefore roughly 89% of the observed end-to-end gap is directly explained by the block core, and almost all of that is the known x64 scalar transform-table fallback. The AVX2 state-update change is correctly selected but cannot close this gap on its own. The next implementation priority is an x64 vectorized block-transform lookup prototype; do not spend the next x64 validation slot on stream-layout or scheduler work.
+
+### AVX2 lookup candidates — discarded after paired x64 measurement
+
+Tested two opt-in AVX2 alternatives against the same Intel Family 6 Model 183 baseline (`812.717 ns/packet`, `27.210 ns/block`):
+
+- Gathered packed `int` transform table: **1191.796 ns/packet** and **44.454 ns/block**, regressions of approximately **46.6%** and **63.4%**.
+- `PSHUFB` 16-table nibble selection: **1060.595 ns/packet** and **38.722 ns/block**, regressions of approximately **30.5%** and **42.3%**.
+
+All candidates preserved `verified=true`, so this is an instruction-cost result rather than a correctness failure. Removed both candidates, their unsafe build requirement, and the multi-candidate launcher from the working implementation. On this CPU, scalar L1-resident `ushort` loads are decisively cheaper than either AVX2 gather latency or 16-way shuffle-and-blend selection. Future x64 lookup work needs a different representation or a non-AVX2 capability; do not revive either prototype.
+
+### Compact lookup loop and AVX2 fused rounds — discarded after fixed-checksum x64 result
+
+The i5-10400F consolidated matrix used the fixed FFdecsa checksum and showed both block-core candidates to be substantial regressions:
+
+| Candidate | End-to-end median | Block median | Default-relative result |
+|---|---:|---:|---:|
+| default specialized core | **1447.819 ns/packet** | **46.286 ns/block** | baseline |
+| compact scalar lookup loop | 1780.215 ns/packet | 59.258 ns/block | +22.9% total, +28.0% block |
+| fused AVX2 32-lane round | 1907.394 ns/packet | 66.413 ns/block | +31.7% total, +43.5% block |
+
+Both were removed from the working implementation and launcher. The fully expanded scalar `ushort` lookup is materially better than a compact loop, and interleaving AVX2 state updates with lookup chunks increases live state and scheduling pressure instead of improving locality. Do not revive either without a different JIT/code-generation hypothesis and an isolated block benchmark win.
+
+### Cross-vendor state-update result and next matrix
+
+The same i5-10400F measurement corrected the earlier forcing error: forced `Vector128` now executes only the 128-bit updates and is valid, but is slower than the AVX2 width.
+
+| State update | End-to-end median | Block median | Decision |
+|---|---:|---:|---|
+| `Vector256` default | **1447.819 ns/packet** | **46.286 ns/block** | keep on AVX2 hosts |
+| forced `Vector128` | 1514.407 ns/packet | 49.559 ns/block | discard for AVX2 hosts |
+| forced `Vector256` | 1445.083 ns/packet | 46.507 ns/block | same path within noise |
+
+This confirms that the specialized 128-lane core should retain wide state updates. The generic-core candidate was subsequently measured and discarded below. The next one-click managed matrix therefore runs only three independently started processes: specialized default, specialized forced-`Vector256`, and the AVX-512 VBMI lookup candidate. It isolates 256-vs-512-bit state update and the 256-byte lookup capability in one rented-machine session on both Intel and AMD.
+
+### Intel AVX2 state-width and lookup-layout result — 2026-07-13
+
+Received the four-path matrix from the Intel Family 6 Model 183 / AVX2 target. Every result remained `verified=true`.
+
+| Path | End-to-end median | Block median | Decision |
+|---|---:|---:|---|
+| default (`Vector256`, unrolled table) | **800.157 ns/packet** | **26.603 ns/block** | keep |
+| compact scalar lookup loop | 948.954 ns/packet | 32.142 ns/block | discard |
+| forced `Vector128` state update | 901.271 ns/packet | 33.112 ns/block | superseded; forcing bug |
+| forced `Vector256` state update | 823.930 ns/packet | 26.971 ns/block | same code path; run-order drift |
+
+The compact lookup loop regresses approximately 18.6% end-to-end and 20.8% in the block core. The default versus forced-256 difference is only process-order/frequency noise because both choose the same implementation. The recorded forced-`Vector128` result is superseded: the forcing branch was found to apply both the wide and 128-bit updates on AVX2 hosts, and its self-derived probe checksum could not expose the error. The branch and checksum validation are corrected below; remeasure `Vector128` before making any quantitative claim about its benefit. The next consolidated matrix should target AVX-512 VBMI hardware, particularly AMD Zen 4, where a 256-byte vector lookup becomes an available ISA primitive.
+
+### Intel Core i5-10400F / Zig C calibration — 2026-07-13
+
+Received a complete managed matrix and native C reference from an Intel Family 6 Model 165 (Core i5-10400F / Comet Lake) host. It reports `avx2=true`, `vector256=true`, `avx512_vbmi=false`, and all managed results have `verified=true`.
+
+| Path | End-to-end median | Payload throughput | Block median |
+|---|---:|---:|---:|
+| default `Vector256`, unrolled scalar lookup | 1447.819 ns/packet | 127.088 MB/s | 46.286 ns/block |
+| compact scalar lookup loop | 1780.215 ns/packet | 103.358 MB/s | 59.258 ns/block |
+| forced `Vector128` state update | 1514.407 ns/packet | 121.500 MB/s | 49.559 ns/block |
+| forced `Vector256` state update | 1445.083 ns/packet | 127.328 MB/s | 46.507 ns/block |
+| VBMI request (unsupported, scalar fallback) | 1457.686 ns/packet | 126.227 MB/s | 46.209 ns/block |
+| FFdecsa C, Zig `cc -O3 -march=native` | **1115.445 ns/packet** | **165.093 MB/s** | — |
+
+The baseline and forced-256 measurements select identical code; their sub-1% difference is normal host/run-order variation. The compact loop regresses about 23%, and the corrected forced-`Vector128` path is about 4.6% slower end-to-end. The C# default median is `1115.445 / 1447.819 = 77.0%` of the same-host Zig/FFdecsa C throughput. Stream time is only `326.700 ns/packet`, while the block core is `46.286 ns/block`; across the 23 block operations that accounts for about `1,065 ns/packet`. The remaining AVX2 gap is therefore predominantly the scalar block transform lookup, not stream processing or packet orchestration. This is a reliable native-C calibration for an AVX2-only CPU, not a cross-host comparison with the earlier Apple Silicon or Raptor Lake samples.
+
+The C reference ran successfully through the portable Zig path, validating that it is the preferred fallback for cloud Windows hosts with incomplete Visual C++ Build Tools installations.
+
+### Intel Core i5-10400F generic-core retest — discarded
+
+The follow-up five-path matrix re-ran every candidate with the fixed checksum and same-host Zig C reference. The default specialized core measured **1419.148 ns/packet** and **45.147 ns/block**, while the generic column-major core measured **1714.460 ns/packet** and **58.096 ns/block**. This is a **20.8%** total regression and **28.7%** block-core regression; forcing `Vector256` changes neither conclusion (`1707.687 ns/packet`, `57.874 ns/block`).
+
+The specialized core's forced-`Vector256` run (`1421.998 ns/packet`, `45.412 ns/block`) and unsupported-VBMI fallback (`1418.019 ns/packet`, `45.123 ns/block`) agree with the default within host noise. The paired C calibration was **1116.242 ns/packet**, making the managed default `1116.242 / 1419.148 = 78.7%` of C throughput in this run.
+
+Removed `FFDECSA_X64_BLOCK_CORE`, the generic column-major dispatch, and its two launcher rows. It is not a viable x64 code-size or scheduling improvement. The reduced matrix retains only useful ISA distinctions: default 512-bit state updates versus forced 256-bit updates on AVX-512 hosts, and the AVX-512 VBMI lookup backend; the later assembly-guided normalized-pointer candidate adds one fourth process.
+
+### Pure-managed x64 assembly-guided optimization workflow
+
+Native interop is explicitly out of scope. The next pure C# optimization loop uses target-host RyuJIT assembly before introducing another candidate: `Run-Jit-Disasm.cmd` disables ReadyToRun, tiering, and tiered PGO for one verified probe and writes JIT disassembly for the `CsaBlockCipher` class to `jit-disasm-block-core.txt`. This is intended to expose the actual AVX2/AVX-512 lowering of the specialized block core, especially scalar-table address calculation, register spills around the fully expanded lookup, residual bounds checks, and the wide state-update loops. It is a diagnostic only; performance comparisons remain the normal multi-sample probe.
+
+### Normalized x64 scalar lookup input pointer — kept as x64 default
+
+The i5-10400F JIT disassembly confirms the specialized 128-lane core uses AVX2 `vpxor`/`vmovups` for the wide state update, but calls a separate **4,618-byte** `PopulateTransformOutputs128` method once per block round. In the scalar lookup body, each of the 128 unrolled lanes repeats an address sequence equivalent to `lea inputOffset + lane`, `movsxd`, then `movzx byte [state + expandedOffset]` before the packed `ushort` table lookup. The specialized core itself is only 1,996 bytes, so the repeated lookup address formation is a more concrete x64 target than reworking the proven state-update loop.
+
+The i5-10400F four-path result verified the candidate and measured a substantial win against the paired forced-`Vector256` scalar control:
+
+| Lookup path | End-to-end median | Block median | Relative to legacy scalar |
+|---|---:|---:|---:|
+| legacy scalar `ushort` lookup | 1425.205 ns/packet | 46.122 ns/block | baseline |
+| normalized input pointer | **1264.423 ns/packet** | **38.896 ns/block** | **12.7%** lower total time; **15.7%** lower block time |
+
+The matching Zig C run measured **1116.497 ns/packet**, so managed throughput reaches `1116.497 / 1264.423 = 88.3%` of FFdecsa C on this AVX2-only host. Stream medians stayed effectively identical (`324.827` versus `325.053 ns/packet`), confirming the gain is isolated to the block core. The candidate is therefore the x64 default, reported as `x64-normalized-input-pointer`. `FFDECSA_X64_BLOCK_LOOKUP=scalar` retains the former behavior only as a regression control; a request for unsupported VBMI also falls back to the normalized default.
+
+### Native-width transform-table index — kept as x64 default
+
+The prior x64 listing emits a `movsxd` before every packed `ushort` table access, after the byte input has already been zero-extended and XORed with the round key. `PopulateTransformOutputs128` now accepts the round key as `nint`, preserving that arithmetic as a native-width expression through `Unsafe.Add(ref transformReference, index)`. The Arm64 and VBMI branches cast the key back to `byte` before their existing helpers, so their algorithm remains unchanged.
+
+The i5-10400F retest verified the native-width form and improved the normalized default to **1249.835 ns/packet** and **37.476 ns/block**. The former scalar-addressing control, now sharing the native-width table index, measured `1343.466 ns/packet` and `42.242 ns/block`; the normalized input pointer remains a further 11.4% block-core reduction. Relative to the prior normalized-pointer result, native-width indexing lowers block time by about 3.7% and end-to-end time by about 1.2%, with unchanged stream timing (about `326 ns/packet`). Keep this form as the x64 default. A fresh JIT listing is required next to confirm the expected removal of the per-lane signed index extension before pursuing another codegen candidate.
+
+### Native-width AVX2 state-column offsets — discarded
+
+The fresh target assembly confirmed the lookup method now uses one normalized input-base adjustment and direct `[base + constant]` loads; its code size fell from 4,618 to 3,596 bytes, with no per-lane `movsxd` before `word [table + 2*index]`. The remaining repeated signed address expansion is in the inlined AVX2 state-update loop: each of its 4 vector chunks per round repeatedly emits `lea` followed by `movsxd` before `vmovups`/`vpxor` accesses to the five state columns.
+
+Changed only `UpdateStateColumns128Wide`'s six column-offset parameters and its vector-address expressions from `int` to `nint`; the specialized caller converted the already-computed fixed offsets once at the helper boundary. Fixed-checksum i5-10400F measurement regressed: the default moved from the prior **1249.835 ns/packet**, **37.476 ns/block** to **1260.820 ns/packet**, **38.017 ns/block** (about 1.4% slower in the block core). Restored the `int` offsets. The signed-extension instructions are cheaper than the additional native-width addressing/register pressure in this loop; do not revisit this change without a different state-update layout.
+
+### AVX-512 VBMI 256-byte lookup candidate — pending cross-vendor result
+
+Added an opt-in `FFDECSA_X64_BLOCK_LOOKUP=vbmi` lookup backend for systems with `Avx512Vbmi.IsSupported`, exposed by the probe as `avx512_vbmi`. It loads each 256-byte lookup table as four `Vector512<byte>` segments and uses two `VPERMI2B` operations plus a vector select to resolve 64 independent byte indexes per operation. This is the direct x86 analog of the Arm `TBL`/`TBX` capability unavailable to AVX2-only Intel systems; AMD Zen 4 is the primary target for this candidate. The retained three-path launcher runs it last; it harmlessly remains on the scalar backend where VBMI is unavailable.
+
+### Probe checksum hardening and fused AVX2 block round — verified then discarded
+
+The managed protocol and probe now validate their first decrypt against the fixed FFdecsa output checksum `76DC3CFC07B7D0F2`, rather than deriving an expected checksum from the same selected candidate. This ensures every opt-in backend is checked against the reference output, not merely against its own warmup output.
+
+The fixed-checksum matrix verified the candidate output, but measured `1907.394 ns/packet` and `66.413 ns/block` on the i5-10400F versus the default `1447.819 ns/packet` and `46.286 ns/block`. It was removed along with its environment switch and launcher row. Correctness alone is insufficient: the AVX2 fused layout loses substantially to separate transform and update columns.
+
+### Windows bundled C reference — Zig calibration verified
+
+The x64 package now includes the upstream FFdecsa source plus `Run-C-Reference.cmd`. It uses an existing Clang when available; otherwise it installs the Microsoft Visual C++ Build Tools workload from Microsoft's official CDN, avoiding a GitHub dependency. It compiles the bundled `PARALLEL_128_2LONG` reference with `-O3 -march=native` on Clang or `/O2 /GL` on MSVC, and prints the normalized `ffdecsa-compare-v1` JSON before waiting for copy. The benchmark source uses `QueryPerformanceCounter` on Windows and `clock_gettime` elsewhere, keeping the input, 128-packet batch, checksum, and decrypt-only window aligned with the managed protocol. This gives the next rented-machine run a native C ceiling rather than only a managed relative comparison.
+
+MSVC requires a forced-include compatibility header that erases FFdecsa's GCC-only `__attribute__((always_inline))` annotation; it is packaged alongside the C benchmark. This fixes the MSVC parse failure in the two transpose helpers without modifying the retained upstream source.
+
+The C launcher validates that `VsDevCmd.bat` populated `INCLUDE` and that `VCToolsInstallDir\include\stdio.h` exists before compiling. When a partial Build Tools install exposes `cl.exe` but lacks CRT headers, it automatically invokes one Microsoft Build Tools modify/repair pass with the C++ workload and then rechecks; this replaces opaque `stdio.h` / `sys/types.h` compiler failures with an actionable setup path.
+
+Fixed the repair-path bootstrap variable initialization: an existing incomplete Build Tools instance reaches repair without passing through the initial-install branch, so the bootstrap path must be initialized before compiler discovery. The launcher now initializes and revalidates that path unconditionally, preventing an empty `"" modify` command.
+
+Added a preferred portable Zig compiler route for constrained cloud Windows images. If the user places a complete Zig Windows x86_64 archive under `zig\` beside `Run-C-Reference.cmd` (`zig\zig.exe`), the launcher chooses `zig cc -O3 -march=native` before Clang/MSVC. Zig includes its own Windows C runtime and linker, bypassing partial Visual C++ Build Tools installations that expose `cl.exe` without CRT/SDK headers.
+
+### Packed S-box/permutation output layout — promoted to the AVX2 default
+
+The Intel Core i5-10400F / AVX2 target validated the combined `ushort` transform-output layout with the fixed FFdecsa checksum. Rather than materializing the high S-box byte and low permutation byte into two 128-byte temporary columns, the x64 path now writes one packed 16-bit result per lane and uses AVX2 shuffles to extract each byte column directly during the vector state update.
+
+| Layout | End-to-end median | Block median | Result |
+|---|---:|---:|---|
+| separate byte columns (normalized lookup) | 1276.442 ns/packet | 37.986 ns/block | control |
+| packed `ushort` output | **1066.088 ns/packet** | **28.860 ns/block** | **16.5% lower total time; 24.0% lower block time** |
+
+The stream median remained effectively unchanged (`328.443` vs `325.829 ns/packet`), isolating the gain to the block core. The packed layout is therefore the default for AVX2-capable x64 processes and reports `block_transform_output_layout=x64-interleaved-ushort`. Set `FFDECSA_X64_BLOCK_LAYOUT=separate` only for the retained regression controls and AVX-512 VBMI comparison. The five-path launcher now uses runs 1 and 5 to compare automatic versus forced-256-bit state width with the new default; runs 2–4 retain the old separate-column controls.
+
+### Same-session Zig C calibration — formal x64 goal exceeded
+
+The complete five-path matrix refreshed the upstream C reference in the same i5-10400F session. The probe and C reference use the same input, batch size, decrypt-only scope, and checksum, but the probe uses seven 5,000-batch samples while the formal `ffdecsa-compare-v1` protocol uses one 30,000-batch measurement.
+
+| Implementation | Median / result | Payload throughput |
+|---|---:|---:|
+| C# packed default | **1043.332 ns/packet** | **176.358 MB/s** |
+| FFdecsa C, Zig `cc -O3 -march=native` | 1115.626 ns/packet | 164.930 MB/s |
+
+The probe-to-C estimate was `1115.626 / 1043.332 = 106.9%` of C throughput (6.5% lower time). The duplicate forced-`Vector256` packed run was indistinguishable within noise (`1043.475 ns/packet`, `28.012 ns/block` versus `1043.332 ns/packet`, `28.135 ns/block`), as expected on this AVX2-only processor. The unsupported VBMI request correctly remained on the separate-column normalized control.
+
+`Run-CSharp-Reference.cmd` was added and `Run-All-Benchmarks.cmd` now runs it before the C launcher. The following complete matrix produced directly comparable managed and C `ffdecsa-compare-v1` rows:
+
+| Implementation | ns/packet | Packets/s | Payload throughput | Allocation | Checksum |
+|---|---:|---:|---:|---:|---|
+| C# packed default | **1030.722** | **970,193.361** | **1428.125 Mbit/s** | 0 B | `76DC3CFC07B7D0F2` |
+| FFdecsa C, Zig `cc -O3 -march=native` | 1116.328 | 895,793.884 | 1318.609 Mbit/s | 0 B | `76DC3CFC07B7D0F2` |
+
+All protocol fields match: 128 packets, 5,000 warmup batches, 30,000 measured batches, and decrypt-only timing with packet copying outside the window. The managed implementation is `970193.361 / 895793.884 = 108.3%` of the C throughput, or **7.7% lower time per packet**. The pure-C# x64 objective of at least 97% of this native C `PARALLEL_128_2LONG` reference is formally achieved on the AVX2 i5-10400F target. This does not yet establish a result against FFdecsa's potentially faster `PARALLEL_128_SSE2` backend; benchmark that variant separately before claiming the fastest native-C comparison.

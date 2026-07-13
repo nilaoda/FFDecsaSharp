@@ -63,6 +63,14 @@ tools/ffdecsa-compare/run-reference.sh
 
 Both commands emit the same JSON schema. See `docs/BENCHMARK_PROTOCOL.md` for the timed scope and comparison rules.
 
+To run the short multi-sample ISA and component probe used for x64 validation:
+
+```sh
+dotnet run -c Release --project src/FFDecsaSharp.PerfHarness/FFDecsaSharp.PerfHarness.csproj -- --probe
+```
+
+The probe reports the selected block backends plus end-to-end, stream, and block medians. It is designed to finish well below two minutes on the target machine. The source launchers and packager live in `tools/x64-probe/`; the Windows package includes a double-click `Run-X64-Probe.cmd` matrix launcher, `Run-C-Reference.cmd` that uses an existing Clang or installs Microsoft Build Tools when needed, and `Run-All-Benchmarks.cmd` for one complete managed-plus-C run. See `docs/X86_PROBE.md` for packaging and result interpretation.
+
 ## Layout
 
 - `src/FFDecsaSharp`: library and DVB-CSA implementation.
