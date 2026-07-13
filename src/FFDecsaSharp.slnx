@@ -3,5 +3,6 @@
   <Project Path="FFDecsaSharp.Benchmarks/FFDecsaSharp.Benchmarks.csproj" />
   <Project Path="FFDecsaSharp.PerfHarness/FFDecsaSharp.PerfHarness.csproj" />
   <Project Path="FFDecsaSharp.Gui/FFDecsaSharp.Gui.csproj" />
+  <Project Path="FFDecsaSharp.Gui.Generators/FFDecsaSharp.Gui.Generators.csproj" />
   <Project Path="FFDecsaSharp.Tests/FFDecsaSharp.Tests.csproj" />
 </Solution>

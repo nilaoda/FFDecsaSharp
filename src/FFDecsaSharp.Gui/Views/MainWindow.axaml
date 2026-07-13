@@ -1,0 +1,263 @@
+<shad:Window xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FFDecsaSharp.Gui.ViewModels"
+             xmlns:models="using:FFDecsaSharp.Gui.Models"
+             xmlns:local="using:FFDecsaSharp.Gui.Converters"
+             xmlns:shad="clr-namespace:ShadUI;assembly=ShadUI"
+             xmlns:lucide="clr-namespace:Lucide.Avalonia;assembly=Lucide.Avalonia"
+             x:Class="FFDecsaSharp.Gui.Views.MainWindow"
+             x:DataType="vm:MainWindowViewModel"
+             Title="{DynamicResource App.Title}"
+             Icon="/Assets/app-icon.png"
+             Width="1180" Height="720"
+             MinWidth="900" MinHeight="560"
+             WindowStartupLocation="CenterScreen"
+             DragDrop.AllowDrop="True"
+             DragDrop.DragOver="MainWindow_DragOver"
+             DragDrop.Drop="MainWindow_Drop"
+             Closing="MainWindow_Closing">
+  <shad:Window.Resources>
+    <local:DecryptionStatusBrushConverter x:Key="StatusBackgroundConverter" />
+    <local:DecryptionStatusBrushConverter x:Key="StatusForegroundConverter" Variant="Foreground" />
+  </shad:Window.Resources>
+
+  <shad:Window.KeyBindings>
+    <KeyBinding Gesture="Delete" Command="{Binding DeleteSelectedCommand}" />
+    <KeyBinding Gesture="F5" Command="{Binding StartSelectedCommand}" />
+  </shad:Window.KeyBindings>
+
+  <shad:Window.Styles>
+    <Style Selector="Button">
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderColor}" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="TextBox">
+      <Setter Property="SelectionBrush" Value="{DynamicResource PrimaryColor50}" />
+      <Setter Property="SelectionForegroundBrush" Value="{x:Null}" />
+    </Style>
+    <Style Selector="Button.ToolbarButton">
+      <Setter Property="MinWidth" Value="76" />
+      <Setter Property="Padding" Value="14,8" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.ToolbarWideButton">
+      <Setter Property="MinWidth" Value="104" />
+      <Setter Property="Padding" Value="14,8" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBlock.SectionTitle">
+      <Setter Property="FontSize" Value="17" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="TextBlock.Muted">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Foreground" Value="{DynamicResource MutedColor}" />
+    </Style>
+    <Style Selector="Border.StatusBadge">
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="Padding" Value="10,3" />
+      <Setter Property="HorizontalAlignment" Value="Left" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBlock.StatusBadgeText">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+  </shad:Window.Styles>
+
+  <Grid RowDefinitions="Auto,Auto,*">
+    <Border Grid.Row="0"
+            Background="{DynamicResource CardBackgroundColor}"
+            BorderBrush="{DynamicResource BorderColor}"
+            BorderThickness="0,0,0,1"
+            Padding="16,12">
+      <Grid ColumnDefinitions="Auto,*,Auto">
+        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Button Classes="Primary ToolbarWideButton" Click="NewTask_Click">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <lucide:LucideIcon Kind="Plus" Size="16" />
+              <TextBlock Text="{DynamicResource App.AddQueue}" />
+            </StackPanel>
+            <ToolTip.Tip><TextBlock Text="{DynamicResource App.AddQueue}" /></ToolTip.Tip>
+          </Button>
+          <Button Classes="ToolbarButton" Command="{Binding StartSelectedCommand}" IsEnabled="{Binding CanStartSelected}">
+            <StackPanel Orientation="Horizontal" Spacing="5">
+              <lucide:LucideIcon Kind="Play" Size="15" />
+              <TextBlock Text="{DynamicResource Main.Start}" />
+            </StackPanel>
+            <ToolTip.Tip><TextBlock Text="{DynamicResource Main.Start}" /></ToolTip.Tip>
+          </Button>
+          <Button Classes="ToolbarButton" Command="{Binding CancelQueueCommand}" IsEnabled="{Binding CanStopQueue}">
+            <StackPanel Orientation="Horizontal" Spacing="5">
+              <lucide:LucideIcon Kind="Square" Size="14" />
+              <TextBlock Text="{DynamicResource Main.Stop}" />
+            </StackPanel>
+            <ToolTip.Tip><TextBlock Text="{DynamicResource Main.Stop}" /></ToolTip.Tip>
+          </Button>
+          <Button Classes="Destructive ToolbarButton" Command="{Binding DeleteSelectedCommand}" IsEnabled="{Binding CanDeleteSelected}">
+            <StackPanel Orientation="Horizontal" Spacing="5">
+              <lucide:LucideIcon Kind="Trash2" Size="15" />
+              <TextBlock Text="{DynamicResource Main.Delete}" />
+            </StackPanel>
+            <ToolTip.Tip><TextBlock Text="{DynamicResource Main.Delete}" /></ToolTip.Tip>
+          </Button>
+        </StackPanel>
+
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <TextBlock Text="{DynamicResource Main.GlobalSpeed}" Foreground="{DynamicResource MutedColor}" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding GlobalSpeedText}" FontWeight="SemiBold" VerticalAlignment="Center" />
+          </StackPanel>
+          <TextBlock Text="{DynamicResource Main.Concurrency}" Foreground="{DynamicResource MutedColor}" VerticalAlignment="Center" />
+          <ComboBox Width="60"
+                    ItemsSource="{Binding ConcurrencyOptions}"
+                    SelectedItem="{Binding MaxConcurrency}"
+                    HorizontalContentAlignment="Center"
+                    VerticalAlignment="Center" />
+          <Button Content="{DynamicResource Main.StartAll}" Classes="ToolbarWideButton" Command="{Binding StartAllCommand}" IsEnabled="{Binding CanStartAll}" />
+          <Button Content="{DynamicResource Main.StopAll}" Classes="ToolbarWideButton" Command="{Binding CancelQueueCommand}" IsEnabled="{Binding CanStopQueue}" />
+          <Button Classes="ToolbarWideButton" Click="Settings_Click">
+            <StackPanel Orientation="Horizontal" Spacing="5">
+              <lucide:LucideIcon Kind="Settings" Size="15" />
+              <TextBlock Text="{DynamicResource Main.Settings}" />
+            </StackPanel>
+            <ToolTip.Tip><TextBlock Text="{DynamicResource Main.Settings}" /></ToolTip.Tip>
+          </Button>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <Border Grid.Row="1"
+            Background="{DynamicResource BackgroundColor}"
+            BorderBrush="{DynamicResource BorderColor}"
+            BorderThickness="0,0,0,1"
+            Padding="16,12">
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Spacing="2">
+          <TextBlock Classes="SectionTitle" Text="{DynamicResource App.Queue}" />
+          <TextBlock Classes="Muted" Text="{Binding QueueSummary}" />
+        </StackPanel>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+          <TextBlock Classes="Muted" Text="{Binding StatusText}" VerticalAlignment="Center" />
+          <Button Content="{Binding DetailPaneButtonText}" Classes="ToolbarWideButton" Command="{Binding ToggleDetailPaneCommand}" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="16">
+      <DataGrid IsVisible="{Binding HasTasks}"
+                ItemsSource="{Binding Tasks}"
+                SelectedItem="{Binding SelectedTask, Mode=TwoWay}"
+                AutoGenerateColumns="False"
+                IsReadOnly="True"
+                SelectionMode="Single"
+                GridLinesVisibility="Horizontal"
+                CanUserResizeColumns="True"
+                CanUserSortColumns="True"
+                x:CompileBindings="False">
+        <DataGrid.ContextMenu>
+          <ContextMenu>
+            <MenuItem Header="{DynamicResource Main.Start}" Command="{Binding StartSelectedCommand}" />
+            <MenuItem Header="{DynamicResource Main.Delete}" Command="{Binding DeleteSelectedCommand}" />
+          </ContextMenu>
+        </DataGrid.ContextMenu>
+        <DataGrid.Columns>
+          <DataGridTextColumn Header="{DynamicResource Column.File}" Binding="{Binding FileName}" Width="*" MinWidth="220" />
+          <DataGridTemplateColumn Header="{DynamicResource Column.Progress}" Width="145">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate DataType="models:DecryptionTask">
+                <Grid Height="18">
+                  <ProgressBar Minimum="0" Maximum="100" Value="{Binding Progress}" />
+                  <TextBlock Text="{Binding Progress, StringFormat={}{0:0.0}%}" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="11" />
+                </Grid>
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTemplateColumn Header="{DynamicResource Column.Status}" Width="108">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate DataType="models:DecryptionTask">
+                <Border Classes="StatusBadge" Background="{Binding StatusKey, Converter={StaticResource StatusBackgroundConverter}}">
+                  <TextBlock Classes="StatusBadgeText" Text="{Binding Status}" Foreground="{Binding StatusKey, Converter={StaticResource StatusForegroundConverter}}" />
+                </Border>
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTextColumn Header="{DynamicResource Column.Speed}" Binding="{Binding Speed}" Width="112" />
+          <DataGridTextColumn Header="{DynamicResource Column.ControlWord}" Binding="{Binding ControlWord}" Width="150" />
+          <DataGridTextColumn Header="{DynamicResource Column.Eta}" Binding="{Binding Eta}" Width="100" />
+          <DataGridTextColumn Header="{DynamicResource Column.Elapsed}" Binding="{Binding Elapsed}" Width="100" />
+        </DataGrid.Columns>
+      </DataGrid>
+
+      <StackPanel IsVisible="{Binding HasNoTasks}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10">
+        <lucide:LucideIcon Kind="Files" Size="30" HorizontalAlignment="Center" Foreground="{DynamicResource MutedColor}" />
+        <TextBlock Text="{DynamicResource App.EmptyQueue}" FontWeight="SemiBold" HorizontalAlignment="Center" />
+        <TextBlock Text="{DynamicResource App.InputHint}" Classes="Muted" TextAlignment="Center" Width="360" TextWrapping="Wrap" />
+        <Button Classes="Primary" Click="NewTask_Click" Padding="18,8" HorizontalAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <lucide:LucideIcon Kind="Plus" Size="15" />
+            <TextBlock Text="{DynamicResource App.AddQueue}" />
+          </StackPanel>
+        </Button>
+      </StackPanel>
+
+      <!-- Detail panel -->
+      <Border Grid.Column="1"
+              IsVisible="{Binding IsDetailPaneOpen}"
+              Width="320"
+              BorderBrush="{DynamicResource BorderColor}"
+              BorderThickness="1,0,0,0"
+              Background="{DynamicResource CardBackgroundColor}"
+              Padding="16">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel Spacing="14">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="{Binding SelectedTask.FileName}" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
+              <Border Grid.Column="1" Classes="StatusBadge"
+                      Background="{Binding SelectedTask.StatusKey, Converter={StaticResource StatusBackgroundConverter}}">
+                <TextBlock Classes="StatusBadgeText" Text="{Binding SelectedTask.Status}"
+                           Foreground="{Binding SelectedTask.StatusKey, Converter={StaticResource StatusForegroundConverter}}" />
+              </Border>
+            </Grid>
+
+            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="6">
+              <TextBlock Classes="Muted" Text="{DynamicResource Column.Speed}" />
+              <TextBlock Grid.Column="1" Text="{Binding SelectedTask.Speed}" FontWeight="SemiBold" />
+              <TextBlock Grid.Row="1" Classes="Muted" Text="{DynamicResource Column.Eta}" />
+              <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SelectedTask.Eta}" FontWeight="SemiBold" />
+              <TextBlock Grid.Row="2" Classes="Muted" Text="{DynamicResource Column.Elapsed}" />
+              <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SelectedTask.Elapsed}" FontWeight="SemiBold" />
+            </Grid>
+
+            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" RowSpacing="6">
+              <TextBlock Classes="Muted" Text="{DynamicResource Column.Packets}" />
+              <TextBlock Grid.Column="1" Text="{Binding SelectedTask.PacketCount}" FontWeight="SemiBold" />
+              <TextBlock Grid.Row="1" Classes="Muted" Text="{DynamicResource Column.Decrypted}" />
+              <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SelectedTask.DecryptedCount}" FontWeight="SemiBold" />
+            </Grid>
+
+            <StackPanel Spacing="4">
+              <TextBlock Classes="Muted" Text="{DynamicResource App.Output}" />
+              <TextBlock Text="{Binding SelectedTask.OutputPath}" TextWrapping="Wrap" FontSize="13" />
+            </StackPanel>
+
+            <StackPanel Spacing="4">
+              <TextBlock Classes="Muted" Text="{DynamicResource App.ControlWord}" />
+              <TextBlock Text="{Binding SelectedTask.ControlWord}" FontFamily="monospace" FontSize="13" />
+            </StackPanel>
+
+            <StackPanel Spacing="4">
+              <TextBlock Classes="Muted" Text="{DynamicResource App.Log}" />
+              <Border BorderBrush="{DynamicResource BorderColor}" BorderThickness="1" CornerRadius="4" Padding="8">
+                <TextBlock Text="{Binding SelectedTask.Log}" TextWrapping="Wrap" FontSize="12"
+                           MaxLines="10" TextTrimming="CharacterEllipsis" />
+              </Border>
+            </StackPanel>
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
+    </Grid>
+  </Grid>
+</shad:Window>

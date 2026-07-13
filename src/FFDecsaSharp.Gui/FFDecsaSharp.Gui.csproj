@@ -1,13 +1,61 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\FFDecsaSharp\FFDecsaSharp.csproj" />
+    <ProjectReference Include="..\FFDecsaSharp.Gui.Generators\FFDecsaSharp.Gui.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <PropertyGroup>
+    <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>FFDecsaSharp.Gui</AssemblyName>
+    <RootNamespace>FFDecsaSharp.Gui</RootNamespace>
+    <Product>FFDecsaSharp</Product>
+    <Title>FFDecsaSharp</Title>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <IsAotCompatible>true</IsAotCompatible>
+    <PublishAot>true</PublishAot>
+    <PublishTrimmed>true</PublishTrimmed>
+    <StripSymbols>true</StripSymbols>
+    <IlcOptimizationPreference>Speed</IlcOptimizationPreference>
+    <IlcFoldIdenticalMethodBodies>true</IlcFoldIdenticalMethodBodies>
+    <IlcTrimMetadata>true</IlcTrimMetadata>
+    <IlcGenerateStackTraceData>true</IlcGenerateStackTraceData>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <ApplicationIcon>Assets\app-icon.ico</ApplicationIcon>
+    <UsedAvaloniaProducts></UsedAvaloniaProducts>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+
+  <PropertyGroup Condition="'$(PublishAot)' == 'true' and '$(Configuration)' == 'Release'">
+    <DebugType>None</DebugType>
+    <DebuggerSupport>false</DebuggerSupport>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <ILLinkTreatWarningsAsErrors>false</ILLinkTreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="FFDecsaSharp.Tests" />
+    <TrimmerRootAssembly Include="FFDecsaSharp.Gui" />
+    <TrimmerRootAssembly Include="Avalonia.Controls" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\**" />
+    <AvaloniaResource Update="**\*.axaml" />
+    <PackageReference Include="Avalonia" Version="12.0.4" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.0.4" />
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.0.0" />
+    <PackageReference Include="Lucide.Avalonia" Version="0.2.12" />
+    <PackageReference Include="ShadUI" Version="0.2.3" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Remove="Lang\Strings*.resx" />
+    <AdditionalFiles Include="Lang\Strings*.resx" />
+    <AdditionalFiles Include="**\*.axaml" />
+  </ItemGroup>
 
 </Project>

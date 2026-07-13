@@ -1,0 +1,122 @@
+<shad:Window xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FFDecsaSharp.Gui.ViewModels"
+             xmlns:shad="clr-namespace:ShadUI;assembly=ShadUI"
+             xmlns:lucide="clr-namespace:Lucide.Avalonia;assembly=Lucide.Avalonia"
+             x:Class="FFDecsaSharp.Gui.Views.TaskEditorWindow"
+             x:DataType="vm:TaskEditorViewModel"
+             Title="{DynamicResource App.Composer}"
+             Width="680" Height="580"
+             CanResize="False"
+             WindowStartupLocation="CenterOwner">
+  <shad:Window.Styles>
+    <Style Selector="TextBox">
+      <Setter Property="SelectionBrush" Value="{DynamicResource PrimaryColor50}" />
+      <Setter Property="SelectionForegroundBrush" Value="{x:Null}" />
+    </Style>
+    <Style Selector="TextBlock.Label">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{DynamicResource MutedColor}" />
+    </Style>
+    <Style Selector="TextBlock.Hint">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Foreground" Value="{DynamicResource MutedColor}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="TextBlock.SectionTitle">
+      <Setter Property="FontSize" Value="15" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+  </shad:Window.Styles>
+
+  <Grid Margin="20" RowDefinitions="Auto,*,Auto" RowSpacing="0">
+    <StackPanel Spacing="4" Margin="0,0,0,14">
+      <TextBlock Text="{DynamicResource App.Composer}" FontSize="20" FontWeight="SemiBold" />
+      <TextBlock Text="{DynamicResource App.InputHint}" Classes="Hint" />
+    </StackPanel>
+
+    <ScrollViewer Grid.Row="1"
+                  VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Spacing="16" Margin="0,0,14,0">
+        <StackPanel Spacing="6">
+          <TextBlock Text="{DynamicResource App.Input}" Classes="Label" />
+          <Grid ColumnDefinitions="*,8,Auto">
+            <TextBox Text="{Binding InputFilesText, Mode=TwoWay}" VerticalContentAlignment="Center" />
+            <Button Grid.Column="2" Click="SelectInputFiles_Click" Padding="14,7">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <lucide:LucideIcon Kind="FolderOpen" Size="15" />
+                <TextBlock Text="{DynamicResource App.Input}" />
+              </StackPanel>
+            </Button>
+          </Grid>
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <lucide:LucideIcon Kind="Info" Size="16" Foreground="{DynamicResource MutedColor}" VerticalAlignment="Center" />
+            <StackPanel Spacing="2">
+              <TextBlock Text="{Binding InputSelectionSummary}" FontWeight="SemiBold" />
+              <TextBlock Text="{DynamicResource App.MergeNotice}" Classes="Hint" />
+            </StackPanel>
+          </StackPanel>
+        </StackPanel>
+
+        <StackPanel Spacing="6">
+          <TextBlock Text="{DynamicResource App.Output}" Classes="Label" />
+          <Grid ColumnDefinitions="*,8,Auto">
+            <TextBox Text="{Binding OutputFilePath, Mode=TwoWay}" PlaceholderText="{DynamicResource App.OutputHint}" VerticalContentAlignment="Center" />
+            <Button Grid.Column="2" Click="SelectOutputFile_Click" Padding="14,7">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <lucide:LucideIcon Kind="FileOutput" Size="15" />
+                <TextBlock Text="{DynamicResource App.Output}" />
+              </StackPanel>
+            </Button>
+          </Grid>
+        </StackPanel>
+
+        <StackPanel Spacing="8">
+          <TextBlock Text="{DynamicResource App.Source}" Classes="SectionTitle" />
+          <StackPanel Spacing="6">
+            <TextBlock Text="{DynamicResource App.ControlWord}" FontSize="16" FontWeight="SemiBold" />
+            <TextBox Text="{Binding ControlWord, Mode=TwoWay}" FontFamily="monospace" FontSize="18" MaxLength="16" VerticalContentAlignment="Center" />
+            <TextBlock Text="{DynamicResource App.KeyHint}" Classes="Hint" />
+          </StackPanel>
+        </StackPanel>
+
+        <!-- Advanced: separate even/odd keys, packet offset/limit -->
+        <Expander Header="{DynamicResource App.Advanced}">
+          <StackPanel Spacing="10" Margin="0,10,0,0">
+            <Grid ColumnDefinitions="*,12,*">
+              <StackPanel Spacing="6">
+                <TextBlock Text="{DynamicResource App.Offset}" Classes="Label" />
+                <TextBox Text="{Binding PacketOffset, Mode=TwoWay}" FontFamily="monospace" VerticalContentAlignment="Center" />
+              </StackPanel>
+              <StackPanel Grid.Column="2" Spacing="6">
+                <TextBlock Text="{DynamicResource App.Limit}" Classes="Label" />
+                <TextBox Text="{Binding PacketLimit, Mode=TwoWay}" FontFamily="monospace" VerticalContentAlignment="Center" />
+              </StackPanel>
+            </Grid>
+            <CheckBox Content="{DynamicResource App.SeparateKeys}" IsChecked="{Binding UseSeparateKeys}" />
+            <StackPanel IsVisible="{Binding UseSeparateKeys}" Spacing="8">
+              <StackPanel Spacing="6">
+                <TextBlock Text="{DynamicResource App.Even}" Classes="Label" />
+                <TextBox Text="{Binding EvenKey, Mode=TwoWay}" FontFamily="monospace" FontSize="16" MaxLength="16" VerticalContentAlignment="Center" />
+              </StackPanel>
+              <StackPanel Spacing="6">
+                <TextBlock Text="{DynamicResource App.Odd}" Classes="Label" />
+                <TextBox Text="{Binding OddKey, Mode=TwoWay}" FontFamily="monospace" FontSize="16" MaxLength="16" VerticalContentAlignment="Center" />
+              </StackPanel>
+            </StackPanel>
+          </StackPanel>
+        </Expander>
+      </StackPanel>
+    </ScrollViewer>
+
+    <Grid Grid.Row="2" ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="0,16,0,0">
+      <TextBlock Text="{Binding StatusText}" Classes="Hint" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+        <Button Content="{DynamicResource App.Cancel}" Padding="16,8" Click="Cancel_Click" />
+        <Button Content="{DynamicResource App.AddToQueue}" Classes="Primary" Padding="18,8" IsEnabled="{Binding CanQueueEditor}" Click="Queue_Click" />
+      </StackPanel>
+    </Grid>
+  </Grid>
+</shad:Window>

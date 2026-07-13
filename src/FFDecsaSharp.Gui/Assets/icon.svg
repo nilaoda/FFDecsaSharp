@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e0f2fe"/>
+      <stop offset="100%" stop-color="#bae6fd"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <!-- 8 shadow layers, smoother fade -->
+  <text x="256" y="290" text-anchor="middle" font-family="'SF Pro Display','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="96" font-weight="700" fill="#06b6d4" letter-spacing="-2" dx="2" dy="2" opacity="0.12">FFdecsa</text>
+  <text x="256" y="290" text-anchor="middle" font-family="'SF Pro Display','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="96" font-weight="700" fill="#06b6d4" letter-spacing="-2" dx="3" dy="3" opacity="0.2">FFdecsa</text>
+  <text x="256" y="290" text-anchor="middle" font-family="'SF Pro Display','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="96" font-weight="700" fill="#06b6d4" letter-spacing="-2" dx="4" dy="4" opacity="0.28">FFdecsa</text>
+  <text x="256" y="290" text-anchor="middle" font-family="'SF Pro Display','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="96" font-weight="700" fill="#06b6d4" letter-spacing="-2" dx="5" dy="5" opacity="0.36">FFdecsa</text>
+  <text x="256" y="290" text-anchor="middle" font-family="'SF Pro Display','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="96" font-weight="700" fill="#06b6d4" letter-spacing="-2" dx="6" dy="6" opacity="0.45">FFdecsa</text>
+  <text x="256" y="290" text-anchor="middle" font-family="'SF Pro Display','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="96" font-weight="700" fill="#06b6d4" letter-spacing="-2" dx="7" dy="7" opacity="0.55">FFdecsa</text>
+  <text x="256" y="290" text-anchor="middle" font-family="'SF Pro Display','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="96" font-weight="700" fill="#06b6d4" letter-spacing="-2" dx="8" dy="8" opacity="0.68">FFdecsa</text>
+  <text x="256" y="290" text-anchor="middle" font-family="'SF Pro Display','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="96" font-weight="700" fill="#06b6d4" letter-spacing="-2" dx="9" dy="9" opacity="0.82">FFdecsa</text>
+  <!-- Cyan highlight (top-left) -->
+  <text x="256" y="290" text-anchor="middle" font-family="'SF Pro Display','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="96" font-weight="700" fill="#22d3ee" letter-spacing="-2" dx="-2" dy="-2" opacity="0.4">FFdecsa</text>
+  <!-- Main text -->
+  <text x="256" y="290" text-anchor="middle" font-family="'SF Pro Display','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="96" font-weight="700" fill="#0f172a" letter-spacing="-2">FFdecsa</text>
+</svg>

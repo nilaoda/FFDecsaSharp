@@ -1,0 +1,172 @@
+name: Build Desktop
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: Publish a GitHub Release after all builds succeed
+        required: true
+        type: boolean
+        default: false
+
+env:
+  DOTNET_SDK_VERSION: 10.0.x
+  PROJECT_PATH: src/FFDecsaSharp.Gui/FFDecsaSharp.Gui.csproj
+  APP_NAME: FFDecsaSharp
+
+jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.release_tag.outputs.value }}
+    steps:
+      - name: Create release tag
+        id: release_tag
+        run: echo "value=build_$(date -u +'%Y%m%d%H%M%S')" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: ${{ matrix.rid }}
+    runs-on: ${{ matrix.runner }}
+    needs: metadata
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            rid: linux-x64
+            platform: linux
+          - runner: ubuntu-24.04-arm
+            rid: linux-arm64
+            platform: linux
+          - runner: windows-latest
+            rid: win-x64
+            platform: windows
+          - runner: windows-11-arm
+            rid: win-arm64
+            platform: windows
+          - runner: macos-13
+            rid: osx-x64
+            platform: macos
+          - runner: macos-14
+            rid: osx-arm64
+            platform: macos
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_VERSION }}
+
+      - name: Publish
+        run: >-
+          dotnet publish ${{ env.PROJECT_PATH }}
+          --configuration Release
+          --runtime ${{ matrix.rid }}
+          --self-contained true
+          --output publish
+          -p:PublishAot=true
+          -p:PublishTrimmed=true
+          -p:StripSymbols=true
+
+      - name: Set artifact name
+        id: artifact
+        shell: bash
+        run: echo "name=${{ env.APP_NAME }}_${{ matrix.rid }}_${{ needs.metadata.outputs.release_tag }}" >> "$GITHUB_OUTPUT"
+
+      - name: Package Linux archive
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          mkdir -p artifact
+          cd publish
+          zip -r "../artifact/${{ steps.artifact.outputs.name }}.zip" . -x '*.dbg'
+
+      - name: Package Windows archive
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifact | Out-Null
+          Compress-Archive -Path publish/* -DestinationPath "artifact/${{ steps.artifact.outputs.name }}.zip"
+
+      - name: Assemble macOS application bundle
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          app_root="$RUNNER_TEMP/${{ env.APP_NAME }}.app"
+          contents="$app_root/Contents"
+          macos="$contents/MacOS"
+          resources="$contents/Resources"
+          rm -rf "$app_root"
+          mkdir -p "$macos" "$resources"
+          cp -R publish/. "$macos/"
+          cp src/FFDecsaSharp.Gui/Assets/app-icon.icns "$resources/app-icon.icns"
+          find "$macos" -maxdepth 1 -name '*.dSYM' -prune -exec rm -rf {} +
+          cat > "$contents/Info.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleDevelopmentRegion</key>
+            <string>en</string>
+            <key>CFBundleDisplayName</key>
+            <string>${{ env.APP_NAME }}</string>
+            <key>CFBundleExecutable</key>
+            <string>FFDecsaSharp.Gui</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.ffdecsasharp.gui</string>
+            <key>CFBundleInfoDictionaryVersion</key>
+            <string>6.0</string>
+            <key>CFBundleName</key>
+            <string>${{ env.APP_NAME }}</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>CFBundleShortVersionString</key>
+            <string>0.0.1</string>
+            <key>CFBundleVersion</key>
+            <string>${{ needs.metadata.outputs.release_tag }}</string>
+            <key>CFBundleIconFile</key>
+            <string>app-icon</string>
+            <key>LSMinimumSystemVersion</key>
+            <string>13.0</string>
+            <key>NSHighResolutionCapable</key>
+            <true/>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Package macOS application bundle
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          mkdir -p artifact
+          ditto -c -k --sequesterRsrc --keepParent "$RUNNER_TEMP/${{ env.APP_NAME }}.app" "artifact/${{ steps.artifact.outputs.name }}.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}_${{ matrix.rid }}
+          path: artifact/*.zip
+          if-no-files-found: error
+
+  release:
+    if: ${{ inputs.publish_release }}
+    runs-on: ubuntu-latest
+    needs: [metadata, build]
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.metadata.outputs.release_tag }}
+          name: Build ${{ needs.metadata.outputs.release_tag }}
+          generate_release_notes: true
+          files: release/*.zip

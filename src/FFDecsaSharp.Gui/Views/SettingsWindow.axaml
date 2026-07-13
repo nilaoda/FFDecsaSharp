@@ -1,0 +1,135 @@
+<shad:Window xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FFDecsaSharp.Gui.ViewModels"
+             xmlns:models="using:FFDecsaSharp.Gui.Models"
+             xmlns:shad="clr-namespace:ShadUI;assembly=ShadUI"
+             xmlns:lucide="clr-namespace:Lucide.Avalonia;assembly=Lucide.Avalonia"
+             x:Class="FFDecsaSharp.Gui.Views.SettingsWindow"
+             x:DataType="vm:SettingsViewModel"
+             Title="{DynamicResource Settings.Title}"
+             Width="600" Height="460"
+             MinWidth="520" MinHeight="400"
+             WindowStartupLocation="CenterOwner">
+  <shad:Window.Styles>
+    <!-- Use a Grid instead of ShadUI's StackPanel template so tab content receives a bounded height and ScrollViewer can scroll. -->
+    <Style Selector="TabControl">
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}"
+                  CornerRadius="{TemplateBinding CornerRadius}"
+                  HorizontalAlignment="{TemplateBinding HorizontalAlignment}"
+                  VerticalAlignment="{TemplateBinding VerticalAlignment}">
+            <Grid RowDefinitions="Auto,8,*">
+              <LayoutTransformControl DockPanel.Dock="{TemplateBinding TabStripPlacement}"
+                                      HorizontalAlignment="{TemplateBinding HorizontalAlignment}"
+                                      Name="LayoutTransform">
+                <Border Background="{DynamicResource TabItemsBackgroundColor}"
+                        CornerRadius="{DynamicResource LgCornerRadius}"
+                        HorizontalAlignment="Left"
+                        Padding="2,4,2,0">
+                  <Panel>
+                    <Canvas IsHitTestVisible="False">
+                      <Border Background="{DynamicResource TabItemSelectedColor}"
+                              BoxShadow="{DynamicResource Shadow}"
+                              Canvas.Left="0" Canvas.Top="0"
+                              CornerRadius="{DynamicResource MdCornerRadius}"
+                              Height="0" Opacity="0" Width="0"
+                              x:Name="PART_SelectionPill">
+                        <Border.Transitions>
+                          <Transitions>
+                            <DoubleTransition Duration="0:0:0.30" Easing="{StaticResource EaseOut}" Property="(Canvas.Left)" />
+                            <DoubleTransition Duration="0:0:0.30" Easing="{StaticResource EaseOut}" Property="(Canvas.Top)" />
+                            <DoubleTransition Duration="0:0:0.30" Easing="{StaticResource EaseOut}" Property="Width" />
+                            <DoubleTransition Duration="0:0:0.30" Easing="{StaticResource EaseOut}" Property="Height" />
+                            <DoubleTransition Duration="0:0:0.20" Easing="{StaticResource EaseOut}" Property="Opacity" />
+                          </Transitions>
+                        </Border.Transitions>
+                      </Border>
+                    </Canvas>
+                    <ItemsPresenter ItemsPanel="{TemplateBinding ItemsPanel}" Name="PART_ItemsPresenter" />
+                  </Panel>
+                </Border>
+              </LayoutTransformControl>
+              <ContentPresenter Grid.Row="2"
+                                Content="{TemplateBinding SelectedContent}"
+                                ContentTemplate="{TemplateBinding SelectedContentTemplate}"
+                                HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                Margin="{TemplateBinding Padding}"
+                                Name="PART_SelectedContentHost"
+                                VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+            </Grid>
+          </Border>
+        </ControlTemplate>
+      </Setter>
+    </Style>
+    <Style Selector="TextBox">
+      <Setter Property="SelectionBrush" Value="{DynamicResource PrimaryColor50}" />
+      <Setter Property="SelectionForegroundBrush" Value="{x:Null}" />
+    </Style>
+    <Style Selector="TextBlock.Hint">
+      <Setter Property="Foreground" Value="{DynamicResource MutedColor}" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="TextBlock.SectionTitle">
+      <Setter Property="FontSize" Value="16" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+  </shad:Window.Styles>
+
+  <DockPanel Margin="20">
+    <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,16">
+      <TextBlock Text="{DynamicResource Settings.Title}" FontSize="20" FontWeight="SemiBold" />
+      <TextBlock Text="{DynamicResource Settings.Description}" Classes="Hint" />
+    </StackPanel>
+
+    <DockPanel DockPanel.Dock="Bottom" Margin="0,16,0,0">
+      <TextBlock Text="{Binding StatusText}" Classes="Hint" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+        <Button Content="{DynamicResource App.Cancel}" Padding="16,8" Click="Cancel_Click" />
+        <Button Content="{DynamicResource Settings.Save}" Classes="Primary" Padding="18,8" Click="Save_Click" />
+      </StackPanel>
+    </DockPanel>
+
+    <TabControl>
+      <TabItem Header="{DynamicResource Settings.General}">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Spacing="12" Margin="0,14,14,0">
+            <TextBlock Text="{DynamicResource Settings.Language}" Classes="SectionTitle" />
+            <ComboBox ItemsSource="{Binding LanguageOptions}" SelectedItem="{Binding SelectedLanguage, Mode=TwoWay}" HorizontalAlignment="Left" MinWidth="220">
+              <ComboBox.ItemTemplate>
+                <DataTemplate DataType="models:LanguageOption"><TextBlock Text="{Binding Label}" /></DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+            <TextBlock Text="{DynamicResource Settings.Description}" Classes="Hint" />
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem Header="{DynamicResource Benchmark.Title}">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Spacing="16" Margin="0,14,14,0">
+            <StackPanel Spacing="4">
+              <TextBlock Text="{DynamicResource Benchmark.Title}" Classes="SectionTitle" />
+              <TextBlock Text="{DynamicResource Benchmark.Description}" Classes="Hint" />
+            </StackPanel>
+            <Border BorderBrush="{DynamicResource BorderColor}" BorderThickness="1" CornerRadius="6" Padding="14">
+              <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                <TextBlock Text="{DynamicResource Benchmark.Result}" Classes="Hint" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1" Text="{Binding BenchmarkResult}" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" Margin="12,0,0,0" />
+                <Button Grid.Column="2" Command="{Binding RunBenchmarkCommand}" IsEnabled="{Binding CanRunBenchmark}" Padding="16,8">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <lucide:LucideIcon Kind="Gauge" Size="15" />
+                    <TextBlock Text="{DynamicResource Benchmark.Run}" />
+                  </StackPanel>
+                </Button>
+              </Grid>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+    </TabControl>
+  </DockPanel>
+</shad:Window>
