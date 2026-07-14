@@ -9,7 +9,6 @@ namespace FFDecsaSharp.Gui.ViewModels;
 
 public partial class SettingsViewModel : ViewModelBase
 {
-    private bool _suppressLanguageSelection;
     private CancellationTokenSource? _benchmarkCts;
 
     [ObservableProperty] private LanguageOption? _selectedLanguage;
@@ -18,12 +17,13 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] private string _statusText = "";
     [ObservableProperty] private int _decryptionWorkerCount;
     [ObservableProperty] private double _benchmarkWorkloadIndex = 3;
+    [ObservableProperty] private ThemeOption? _selectedTheme;
 
     public ObservableCollection<LanguageOption> LanguageOptions { get; } = [];
+    public ObservableCollection<ThemeOption> ThemeOptions { get; } = [];
     public bool CanRunBenchmark => !IsBenchmarkRunning;
     public int MaximumDecryptionWorkerCount => AppSettingsService.MaximumDecryptionWorkerCount;
     public string DecryptionWorkerCountHint => L.Settings_DecryptionThreadsHint(MaximumDecryptionWorkerCount);
-    public string BenchmarkWorkerCountText => L.Benchmark_Threads(DecryptionWorkerCount);
     public double MaximumBenchmarkWorkloadIndex => CsaBenchmarkService.MeasurementBatchOptionValues.Count - 1;
     public string BenchmarkWorkloadText => L.Benchmark_WorkloadBatches(BenchmarkMeasurementBatches, BenchmarkMeasurementBatches * CsaBenchmarkService.BatchSize);
     public string BenchmarkWorkloadHint => L.Benchmark_WorkloadHint;
@@ -35,12 +35,16 @@ public partial class SettingsViewModel : ViewModelBase
     {
         DecryptionWorkerCount = AppSettingsService.DecryptionWorkerCount;
         BenchmarkWorkloadIndex = GetBenchmarkWorkloadIndex(AppSettingsService.BenchmarkMeasurementBatches);
-        RefreshLanguageOptions(LocalizationService.Mode);
+        RefreshLanguageOptions(AppSettingsService.LanguageMode);
+        RefreshThemeOptions(AppSettingsService.ThemeMode);
     }
 
     partial void OnSelectedLanguageChanged(LanguageOption? value)
     {
-        if (!_suppressLanguageSelection && value is not null) LocalizationService.Apply(value.Mode);
+    }
+
+    partial void OnSelectedThemeChanged(ThemeOption? value)
+    {
     }
 
     [RelayCommand]
@@ -74,7 +78,12 @@ public partial class SettingsViewModel : ViewModelBase
         }
     }
 
-    public bool TrySave(out Exception? exception) => AppSettingsService.TrySave(DecryptionWorkerCount, BenchmarkMeasurementBatches, out exception);
+    public bool TrySave(out Exception? exception) => AppSettingsService.TrySave(
+        SelectedLanguage?.Mode ?? AppSettingsService.LanguageMode,
+        DecryptionWorkerCount,
+        BenchmarkMeasurementBatches,
+        SelectedTheme?.Mode ?? AppSettingsService.ThemeMode,
+        out exception);
 
     partial void OnDecryptionWorkerCountChanged(int value)
     {
@@ -84,7 +93,6 @@ public partial class SettingsViewModel : ViewModelBase
             DecryptionWorkerCount = coerced;
         }
 
-        OnPropertyChanged(nameof(BenchmarkWorkerCountText));
     }
 
     partial void OnIsBenchmarkRunningChanged(bool value) => OnPropertyChanged(nameof(CanRunBenchmark));
@@ -115,18 +123,26 @@ public partial class SettingsViewModel : ViewModelBase
 
     private void RefreshLanguageOptions(LanguageMode selectedMode)
     {
-        _suppressLanguageSelection = true;
-        try
-        {
-            LanguageOptions.Clear();
-            LanguageOptions.Add(new LanguageOption(LanguageMode.Auto, L.App_Auto));
-            LanguageOptions.Add(new LanguageOption(LanguageMode.English, L.App_English));
-            LanguageOptions.Add(new LanguageOption(LanguageMode.SimplifiedChinese, L.App_Simplified));
-            LanguageOptions.Add(new LanguageOption(LanguageMode.TraditionalChinese, L.App_Traditional));
-            SelectedLanguage = LanguageOptions.FirstOrDefault(option => option.Mode == selectedMode) ?? LanguageOptions[0];
-        }
-        finally { _suppressLanguageSelection = false; }
+        LanguageOptions.Clear();
+        LanguageOptions.Add(new LanguageOption(LanguageMode.Auto, L.App_Auto));
+        LanguageOptions.Add(new LanguageOption(LanguageMode.English, L.App_English));
+        LanguageOptions.Add(new LanguageOption(LanguageMode.SimplifiedChinese, L.App_Simplified));
+        LanguageOptions.Add(new LanguageOption(LanguageMode.TraditionalChinese, L.App_Traditional));
+        SelectedLanguage = LanguageOptions.FirstOrDefault(option => option.Mode == selectedMode) ?? LanguageOptions[0];
     }
 
-    public LanguageMode GetOriginalLanguage() => LocalizationService.Mode;
+    private void RefreshThemeOptions(AppThemeMode selectedMode)
+    {
+        ThemeOptions.Clear();
+        ThemeOptions.Add(new ThemeOption(AppThemeMode.System, L.Settings_ThemeSystem));
+        ThemeOptions.Add(new ThemeOption(AppThemeMode.Light, L.Settings_ThemeLight));
+        ThemeOptions.Add(new ThemeOption(AppThemeMode.Dark, L.Settings_ThemeDark));
+        SelectedTheme = ThemeOptions.FirstOrDefault(option => option.Mode == selectedMode) ?? ThemeOptions[0];
+    }
+
+    public void ApplySavedAppearance()
+    {
+        LocalizationService.Apply(SelectedLanguage?.Mode ?? AppSettingsService.LanguageMode);
+        AppThemeService.Apply(SelectedTheme?.Mode ?? AppSettingsService.ThemeMode);
+    }
 }

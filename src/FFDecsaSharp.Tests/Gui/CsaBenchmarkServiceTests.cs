@@ -1,4 +1,5 @@
 using FFDecsaSharp.Gui.Services;
+using FFDecsaSharp.Gui.Models;
 
 namespace FFDecsaSharp.Tests.Gui;
 
@@ -30,6 +31,12 @@ public sealed class CsaBenchmarkServiceTests
     {
         Assert.Equal(1, AppSettingsService.CoerceDecryptionWorkerCount(0));
         Assert.Equal(AppSettingsService.MaximumDecryptionWorkerCount, AppSettingsService.CoerceDecryptionWorkerCount(int.MaxValue));
+    }
+
+    [Fact]
+    public void InvalidThemeModeFallsBackToTheSystemTheme()
+    {
+        Assert.Equal(AppThemeMode.System, AppSettingsService.CoerceThemeMode((AppThemeMode)99));
     }
 
     [Fact]

@@ -7,13 +7,11 @@ namespace FFDecsaSharp.Gui.Views;
 public partial class SettingsWindow : ShadUI.Window
 {
     private readonly SettingsViewModel _viewModel;
-    private readonly LanguageMode _originalLanguage;
 
     public SettingsWindow()
     {
         InitializeComponent();
         _viewModel = new SettingsViewModel();
-        _originalLanguage = _viewModel.GetOriginalLanguage();
         DataContext = _viewModel;
     }
 
@@ -21,6 +19,7 @@ public partial class SettingsWindow : ShadUI.Window
     {
         if (_viewModel.TrySave(out Exception? exception))
         {
+            _viewModel.ApplySavedAppearance();
             Close(true);
             return;
         }
@@ -30,7 +29,6 @@ public partial class SettingsWindow : ShadUI.Window
 
     private void Cancel_Click(object? sender, RoutedEventArgs e)
     {
-        LocalizationService.Apply(_originalLanguage);
         Close(false);
     }
 }

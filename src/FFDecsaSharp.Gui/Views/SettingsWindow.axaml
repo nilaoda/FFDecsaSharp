@@ -8,7 +8,7 @@
              x:DataType="vm:SettingsViewModel"
              Title="{DynamicResource Settings.Title}"
              Width="600" Height="560"
-             MinWidth="520" MinHeight="480"
+             MinWidth="520" MinHeight="520"
              WindowStartupLocation="CenterOwner">
   <shad:Window.Styles>
     <!-- Use a Grid instead of ShadUI's StackPanel template so tab content receives a bounded height and ScrollViewer can scroll. -->
@@ -79,13 +79,13 @@
     </Style>
   </shad:Window.Styles>
 
-  <DockPanel Margin="20">
-    <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,16">
+  <Grid Margin="20" RowDefinitions="Auto,*,Auto">
+    <StackPanel Grid.Row="0" Spacing="4" Margin="0,0,0,16">
       <TextBlock Text="{DynamicResource Settings.Title}" FontSize="20" FontWeight="SemiBold" />
       <TextBlock Text="{DynamicResource Settings.Description}" Classes="Hint" />
     </StackPanel>
 
-    <DockPanel DockPanel.Dock="Bottom" Margin="0,16,0,0">
+    <DockPanel Grid.Row="2" Margin="0,16,0,0">
       <TextBlock Text="{Binding StatusText}" Classes="Hint" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
       <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
         <Button Content="{DynamicResource App.Cancel}" Padding="16,8" Click="Cancel_Click" />
@@ -93,8 +93,8 @@
       </StackPanel>
     </DockPanel>
 
-    <TabControl>
-      <TabItem Header="{DynamicResource Settings.General}">
+    <TabControl Grid.Row="1">
+      <TabItem Header="{DynamicResource Settings.Appearance}">
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
           <StackPanel Spacing="12" Margin="0,14,14,0">
             <TextBlock Text="{DynamicResource Settings.Language}" Classes="SectionTitle" />
@@ -104,28 +104,32 @@
               </ComboBox.ItemTemplate>
             </ComboBox>
             <TextBlock Text="{DynamicResource Settings.Description}" Classes="Hint" />
-            <TextBlock Text="{DynamicResource Settings.DecryptionThreads}" Classes="SectionTitle" />
-            <NumericUpDown shad:NumericUpDownAssist.NumericOnly="False"
-                           shad:ElementAssist.AttachFocus=""
-                           Width="220"
-                           Minimum="1"
-                           Maximum="{Binding MaximumDecryptionWorkerCount}"
-                           Value="{Binding DecryptionWorkerCount, Mode=TwoWay}"
-                           FormatString="0"
-                           HorizontalAlignment="Left"
-                           HorizontalContentAlignment="Center" />
-            <TextBlock Text="{Binding DecryptionWorkerCountHint}" Classes="Hint" />
+            <TextBlock Text="{DynamicResource Settings.Theme}" Classes="SectionTitle" />
+            <ComboBox ItemsSource="{Binding ThemeOptions}" SelectedItem="{Binding SelectedTheme, Mode=TwoWay}" HorizontalAlignment="Left" MinWidth="220">
+              <ComboBox.ItemTemplate>
+                <DataTemplate DataType="models:ThemeOption"><TextBlock Text="{Binding Label}" /></DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+            <TextBlock Text="{DynamicResource Settings.ThemeHint}" Classes="Hint" />
           </StackPanel>
         </ScrollViewer>
       </TabItem>
 
-      <TabItem Header="{DynamicResource Benchmark.Title}">
+      <TabItem Header="{DynamicResource Settings.Performance}">
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
           <StackPanel Spacing="16" Margin="0,14,14,0">
-            <StackPanel Spacing="4">
-              <TextBlock Text="{DynamicResource Benchmark.Title}" Classes="SectionTitle" />
-              <TextBlock Text="{DynamicResource Benchmark.Description}" Classes="Hint" />
-              <TextBlock Text="{Binding BenchmarkWorkerCountText}" Classes="Hint" />
+            <StackPanel Spacing="6">
+              <TextBlock Text="{DynamicResource Settings.DecryptionThreads}" Classes="SectionTitle" />
+              <NumericUpDown shad:NumericUpDownAssist.NumericOnly="False"
+                             shad:ElementAssist.AttachFocus=""
+                             Width="220"
+                             Minimum="1"
+                             Maximum="{Binding MaximumDecryptionWorkerCount}"
+                             Value="{Binding DecryptionWorkerCount, Mode=TwoWay}"
+                             FormatString="0"
+                             HorizontalAlignment="Left"
+                             HorizontalContentAlignment="Center" />
+              <TextBlock Text="{Binding DecryptionWorkerCountHint}" Classes="Hint" />
             </StackPanel>
             <StackPanel Spacing="6">
               <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
@@ -159,5 +163,5 @@
         </ScrollViewer>
       </TabItem>
     </TabControl>
-  </DockPanel>
+  </Grid>
 </shad:Window>

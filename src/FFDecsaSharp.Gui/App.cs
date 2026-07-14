@@ -29,7 +29,8 @@ public sealed class App : Application
         };
 
         AppSettingsService.Load();
-        LocalizationService.Apply(LanguageMode.Auto);
+        AppThemeService.Apply(AppSettingsService.ThemeMode);
+        LocalizationService.Apply(AppSettingsService.LanguageMode);
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             desktop.MainWindow = new MainWindow { DataContext = new MainWindowViewModel() };
         base.OnFrameworkInitializationCompleted();
