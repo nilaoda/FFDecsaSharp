@@ -25,6 +25,7 @@
   <data name="App.Limit"><value>Packet limit</value></data>
   <data name="App.Odd"><value>Odd control word</value></data>
   <data name="App.Offset"><value>Packet offset</value></data>
+  <data name="App.OpenGitHub"><value>View project on GitHub</value></data>
   <data name="App.Input"><value>Input files</value></data>
   <data name="App.InputHint"><value>Select one or more MPEG-TS files, then add this configuration to the processing queue.</value></data>
   <data name="App.Output"><value>Output file</value></data>
@@ -103,6 +104,7 @@
   <data name="Settings.DecryptionThreadsHint"><value>Use 1 to {0} workers per decryption task. Benchmark uses the current value; changes apply when you choose Done.</value></data>
   <data name="Settings.General"><value>General</value></data>
   <data name="Settings.Performance"><value>Performance</value></data>
+  <data name="Settings.ProjectHomepage"><value>Project homepage</value></data>
   <data name="Settings.Language"><value>Language</value></data>
   <data name="Settings.Save"><value>Done</value></data>
   <data name="Settings.Title"><value>Settings</value></data>

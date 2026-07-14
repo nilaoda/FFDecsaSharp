@@ -27,6 +27,7 @@ internal static class CliApplication
             {
                 case HelpCommand:
                     await output.WriteLineAsync(localizer.Usage).ConfigureAwait(false);
+                    await output.WriteLineAsync(localizer.ProjectHomepage).ConfigureAwait(false);
                     return 0;
                 case VersionCommand:
                     await output.WriteLineAsync(GetVersion()).ConfigureAwait(false);

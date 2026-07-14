@@ -25,6 +25,7 @@
   <data name="App.Limit"><value>包數量上限</value></data>
   <data name="App.Odd"><value>奇數控制字</value></data>
   <data name="App.Offset"><value>包偏移</value></data>
+  <data name="App.OpenGitHub"><value>在 GitHub 上檢視專案</value></data>
   <data name="App.Input"><value>輸入檔案</value></data>
   <data name="App.InputHint"><value>選擇一或多個 MPEG-TS 檔案，然後將本次設定加入處理佇列。</value></data>
   <data name="App.Output"><value>輸出檔案</value></data>
@@ -103,6 +104,7 @@
   <data name="Settings.DecryptionThreadsHint"><value>每個解密工作可使用 1 至 {0} 個工作執行緒。Benchmark 使用目前數值；點選完成後套用解密設定。</value></data>
   <data name="Settings.General"><value>一般</value></data>
   <data name="Settings.Performance"><value>效能</value></data>
+  <data name="Settings.ProjectHomepage"><value>專案首頁</value></data>
   <data name="Settings.Language"><value>語言</value></data>
   <data name="Settings.Save"><value>完成</value></data>
   <data name="Settings.Title"><value>設定</value></data>

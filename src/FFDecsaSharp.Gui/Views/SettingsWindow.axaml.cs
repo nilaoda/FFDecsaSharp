@@ -31,4 +31,9 @@ public partial class SettingsWindow : ShadUI.Window
     {
         Close(false);
     }
+
+    private void OpenGitHub_Click(object? sender, RoutedEventArgs e)
+    {
+        ProjectLinkService.OpenGitHub();
+    }
 }

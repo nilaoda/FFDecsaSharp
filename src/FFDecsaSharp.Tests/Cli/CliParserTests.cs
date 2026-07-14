@@ -40,6 +40,7 @@ public sealed class CliParserTests
 
         Assert.Equal(0, helpExitCode);
         Assert.Contains("命令行工具", output.ToString());
+        Assert.Contains("https://github.com/nilaoda/FFDecsaSharp", output.ToString());
 
         output.GetStringBuilder().Clear();
         int benchmarkExitCode = await CliApplication.RunAsync(["benchmark", "--batches", "1000", "--lang", "zh-Hant"], output, new StringWriter(), CancellationToken.None);

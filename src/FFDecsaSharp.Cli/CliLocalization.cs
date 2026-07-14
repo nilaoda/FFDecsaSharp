@@ -14,6 +14,7 @@ internal enum CliLanguage
 internal sealed partial class CliLocalizer
 {
     private const int LocaleNameMaxLength = 85;
+    private const string GitHubUrl = "https://github.com/nilaoda/FFDecsaSharp";
 
     private CliLocalizer(CliLanguage language) => Language = language;
 
@@ -122,6 +123,7 @@ Options:
     };
 
     public string ErrorPrefix => Select("error", "错误", "錯誤");
+    public string ProjectHomepage => Select($"Project homepage: {GitHubUrl}", $"项目主页：{GitHubUrl}", $"專案首頁：{GitHubUrl}");
     public string UsageHint => Select("Run 'ffdecsasharp --help' for usage.", "运行 'ffdecsasharp --help' 查看用法。", "執行 'ffdecsasharp --help' 查看用法。");
     public string Cancelled => Select("Cancelled.", "已取消。", "已取消。");
     public string UnknownCommand(string value) => Select($"Unknown command '{value}'.", $"未知命令“{value}”。", $"未知命令「{value}」。");
