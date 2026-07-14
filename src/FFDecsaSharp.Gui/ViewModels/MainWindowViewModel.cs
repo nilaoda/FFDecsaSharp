@@ -255,8 +255,8 @@ public partial class MainWindowViewModel : ViewModelBase
     private void LocalizationService_LanguageChanged(object? sender, EventArgs e)
     {
         foreach (DecryptionTask task in Tasks) task.RefreshLocalizedText();
-        if (SelectedTask is null) StatusText = L.App_Footer;
-        OnPropertyChanged(nameof(QueueSummary));
+        OnPropertyChanged(nameof(DetailPaneButtonText));
+        RefreshQueueState();
     }
 
     private static string EstimateRemaining(DecryptionProgress progress)
