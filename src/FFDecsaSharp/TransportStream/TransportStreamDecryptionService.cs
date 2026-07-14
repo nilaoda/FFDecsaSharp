@@ -143,14 +143,30 @@ public static class TransportStreamDecryptionService
     {
         string fullOutputPath = Path.GetFullPath(outputPath);
         string existingDirectory = FindExistingDirectory(Path.GetDirectoryName(fullOutputPath) ?? Environment.CurrentDirectory);
-        DriveInfo? volume = DriveInfo.GetDrives()
-            .Where(static drive => drive.IsReady)
-            .OrderByDescending(static drive => drive.RootDirectory.FullName.Length)
-            .FirstOrDefault(drive => IsPathOnVolume(existingDirectory, drive.RootDirectory.FullName));
-
-        volume ??= new DriveInfo(Path.GetPathRoot(existingDirectory) ?? Path.DirectorySeparatorChar.ToString());
-        if (!volume.IsReady || volume.AvailableFreeSpace < requiredBytes)
+        DriveInfo? volume = TryFindVolume(existingDirectory);
+        if (volume is not null && (!volume.IsReady || volume.AvailableFreeSpace < requiredBytes))
             throw new IOException("Insufficient free disk space for the decrypted output.");
+    }
+
+    private static DriveInfo? TryFindVolume(string existingDirectory)
+    {
+        try
+        {
+            DriveInfo? volume = DriveInfo.GetDrives()
+                .Where(static drive => drive.IsReady)
+                .OrderByDescending(static drive => drive.RootDirectory.FullName.Length)
+                .FirstOrDefault(drive => IsPathOnVolume(existingDirectory, drive.RootDirectory.FullName));
+            if (volume is not null) return volume;
+        }
+        catch (ArgumentException)
+        {
+            // Some Unix environments can expose an invalid mount entry. Fall back to the path root.
+        }
+
+        string? root = Path.GetPathRoot(existingDirectory);
+        if (string.IsNullOrWhiteSpace(root)) return null;
+        try { return new DriveInfo(root); }
+        catch (ArgumentException) { return null; }
     }
 
     private static string FindExistingDirectory(string directory)
