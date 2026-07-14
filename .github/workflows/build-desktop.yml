@@ -232,6 +232,7 @@ jobs:
       - name: Verify and package static CLI
         shell: bash
         run: |
+          sudo chown -R "$(id -u):$(id -g)" publish
           mv publish/FFDecsaSharp.Cli publish/${{ env.CLI_NAME }}
           file publish/${{ env.CLI_NAME }} | grep -q 'statically linked'
           mkdir artifact
@@ -282,6 +283,7 @@ jobs:
       - name: Verify and package static CLI
         shell: bash
         run: |
+          sudo chown -R "$(id -u):$(id -g)" publish
           mv publish/FFDecsaSharp.Cli publish/${{ env.CLI_NAME }}
           file publish/${{ env.CLI_NAME }} | grep -q 'statically linked'
           mkdir artifact
