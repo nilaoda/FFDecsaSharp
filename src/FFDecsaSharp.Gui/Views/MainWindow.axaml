@@ -170,7 +170,7 @@
         </DataGrid.ContextMenu>
         <DataGrid.Columns>
           <DataGridTextColumn Header="{DynamicResource Column.File}" Binding="{Binding FileName}" Width="*" MinWidth="220" />
-          <DataGridTemplateColumn Header="{DynamicResource Column.Size}" Width="92">
+          <DataGridTemplateColumn Header="{DynamicResource Column.Size}" Width="110">
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate DataType="models:DecryptionTask">
                 <TextBlock Text="{Binding InputSize}" HorizontalAlignment="Right" />
@@ -257,7 +257,7 @@
 
             <StackPanel Spacing="4">
               <TextBlock Classes="Muted" Text="{DynamicResource App.ControlWord}" />
-              <TextBlock Text="{Binding SelectedTask.ControlWord}" FontFamily="monospace" FontSize="13" />
+              <TextBlock Text="{Binding SelectedTask.ControlWord}" FontFamily="{StaticResource MonospaceFontFamily}" FontSize="13" />
             </StackPanel>
 
             <StackPanel Spacing="4">

@@ -76,8 +76,8 @@
         <StackPanel Spacing="8">
           <TextBlock Text="{DynamicResource App.Source}" Classes="SectionTitle" />
           <StackPanel Spacing="6">
-            <TextBlock Text="{DynamicResource App.ControlWord}" FontSize="16" FontWeight="SemiBold" />
-            <TextBox Text="{Binding ControlWord, Mode=TwoWay}" FontFamily="monospace" FontSize="18" MaxLength="16" VerticalContentAlignment="Center" />
+            <TextBlock Text="{DynamicResource App.ControlWord}" Classes="Label" />
+            <TextBox Text="{Binding ControlWord, Mode=TwoWay}" FontFamily="{StaticResource MonospaceFontFamily}" MaxLength="16" VerticalContentAlignment="Center" />
             <TextBlock Text="{DynamicResource App.KeyHint}" Classes="Hint" />
           </StackPanel>
         </StackPanel>
@@ -88,22 +88,22 @@
             <Grid ColumnDefinitions="*,12,*">
               <StackPanel Spacing="6">
                 <TextBlock Text="{DynamicResource App.Offset}" Classes="Label" />
-                <TextBox Text="{Binding PacketOffset, Mode=TwoWay}" FontFamily="monospace" VerticalContentAlignment="Center" />
+                <TextBox Text="{Binding PacketOffset, Mode=TwoWay}" FontFamily="{StaticResource MonospaceFontFamily}" VerticalContentAlignment="Center" />
               </StackPanel>
               <StackPanel Grid.Column="2" Spacing="6">
                 <TextBlock Text="{DynamicResource App.Limit}" Classes="Label" />
-                <TextBox Text="{Binding PacketLimit, Mode=TwoWay}" FontFamily="monospace" VerticalContentAlignment="Center" />
+                <TextBox Text="{Binding PacketLimit, Mode=TwoWay}" FontFamily="{StaticResource MonospaceFontFamily}" VerticalContentAlignment="Center" />
               </StackPanel>
             </Grid>
             <CheckBox Content="{DynamicResource App.SeparateKeys}" IsChecked="{Binding UseSeparateKeys}" />
             <StackPanel IsVisible="{Binding UseSeparateKeys}" Spacing="8">
               <StackPanel Spacing="6">
                 <TextBlock Text="{DynamicResource App.Even}" Classes="Label" />
-                <TextBox Text="{Binding EvenKey, Mode=TwoWay}" FontFamily="monospace" FontSize="16" MaxLength="16" VerticalContentAlignment="Center" />
+                <TextBox Text="{Binding EvenKey, Mode=TwoWay}" FontFamily="{StaticResource MonospaceFontFamily}" MaxLength="16" VerticalContentAlignment="Center" />
               </StackPanel>
               <StackPanel Spacing="6">
                 <TextBlock Text="{DynamicResource App.Odd}" Classes="Label" />
-                <TextBox Text="{Binding OddKey, Mode=TwoWay}" FontFamily="monospace" FontSize="16" MaxLength="16" VerticalContentAlignment="Center" />
+                <TextBox Text="{Binding OddKey, Mode=TwoWay}" FontFamily="{StaticResource MonospaceFontFamily}" MaxLength="16" VerticalContentAlignment="Center" />
               </StackPanel>
             </StackPanel>
           </StackPanel>

@@ -1,3 +1,6 @@
 <Application xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:shad="clr-namespace:ShadUI;assembly=ShadUI" x:Class="FFDecsaSharp.Gui.App" Name="FFDecsaSharp">
+  <Application.Resources>
+    <FontFamily x:Key="MonospaceFontFamily">Cascadia Mono, SF Mono, Menlo, Consolas, DejaVu Sans Mono, Liberation Mono</FontFamily>
+  </Application.Resources>
   <Application.Styles><shad:ShadTheme /></Application.Styles>
 </Application>
