@@ -10,11 +10,11 @@ internal static class ThroughputFormatter
 
     public static string FormatFileSize(long bytes)
     {
-        const double bytesPerKibibyte = 1024d;
-        const double bytesPerGibibyte = 1024d * 1024d * 1024d;
-        if (bytes >= bytesPerGibibyte) return $"{bytes / bytesPerGibibyte:0.00} GiB";
-        if (bytes >= BytesPerMegabyte) return $"{bytes / BytesPerMegabyte:0.00} MiB";
-        if (bytes >= bytesPerKibibyte) return $"{bytes / bytesPerKibibyte:0.00} KiB";
+        const double bytesPerKilobyte = 1024d;
+        const double bytesPerGigabyte = 1024d * 1024d * 1024d;
+        if (bytes >= bytesPerGigabyte) return $"{bytes / bytesPerGigabyte:0.00} GB";
+        if (bytes >= BytesPerMegabyte) return $"{bytes / BytesPerMegabyte:0.00} MB";
+        if (bytes >= bytesPerKilobyte) return $"{bytes / bytesPerKilobyte:0.00} KB";
         return $"{Math.Max(0, bytes)} B";
     }
 }
