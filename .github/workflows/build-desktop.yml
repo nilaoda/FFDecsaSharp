@@ -234,7 +234,7 @@ jobs:
         run: |
           sudo chown -R "$(id -u):$(id -g)" publish
           mv publish/FFDecsaSharp.Cli publish/${{ env.CLI_NAME }}
-          file publish/${{ env.CLI_NAME }} | grep -q 'statically linked'
+          file publish/${{ env.CLI_NAME }} | tee /dev/stderr | grep -Eq 'statically linked|static-pie linked'
           mkdir artifact
           (cd publish && zip -9 "../artifact/${{ env.APP_NAME }}_CLI_linux-x64_${{ needs.metadata.outputs.release_tag }}.zip" "${{ env.CLI_NAME }}")
       - uses: actions/upload-artifact@v4
@@ -285,7 +285,7 @@ jobs:
         run: |
           sudo chown -R "$(id -u):$(id -g)" publish
           mv publish/FFDecsaSharp.Cli publish/${{ env.CLI_NAME }}
-          file publish/${{ env.CLI_NAME }} | grep -q 'statically linked'
+          file publish/${{ env.CLI_NAME }} | tee /dev/stderr | grep -Eq 'statically linked|static-pie linked'
           mkdir artifact
           (cd publish && zip -9 "../artifact/${{ env.APP_NAME }}_CLI_linux-arm64_${{ needs.metadata.outputs.release_tag }}.zip" "${{ env.CLI_NAME }}")
       - uses: actions/upload-artifact@v4
