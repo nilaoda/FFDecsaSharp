@@ -1,18 +1,20 @@
-name: Build Desktop
+name: Build Release
 
 on:
   workflow_dispatch:
     inputs:
       publish_release:
-        description: Publish a GitHub Release after all builds succeed
+        description: Publish one GitHub Release containing both GUI and CLI artifacts
         required: true
         type: boolean
         default: false
 
 env:
-  DOTNET_SDK_VERSION: 10.0.x
+  DOTNET_SDK_VERSION: 10.0.300
   PROJECT_PATH: src/FFDecsaSharp.Gui/FFDecsaSharp.Gui.csproj
+  CLI_PROJECT_PATH: src/FFDecsaSharp.Cli/FFDecsaSharp.Cli.csproj
   APP_NAME: FFDecsaSharp
+  CLI_NAME: ffdecsasharp
 
 jobs:
   metadata:
@@ -27,8 +29,8 @@ jobs:
           echo "value=build_$(date -u -d '8 hours' +'%Y%m%d%H%M%S')" >> "$GITHUB_OUTPUT"
           echo "time=$(date -u -d '8 hours' +'%Y-%m-%d %H:%M:%S')" >> "$GITHUB_OUTPUT"
 
-  build:
-    name: ${{ matrix.rid }}
+  build-gui:
+    name: GUI / ${{ matrix.rid }}
     runs-on: ${{ matrix.runner }}
     needs: metadata
     strategy:
@@ -77,18 +79,13 @@ jobs:
           --self-contained true
           --output publish
 
-      - name: Set artifact name
-        id: artifact
-        shell: bash
-        run: echo "name=${{ env.APP_NAME }}_${{ matrix.rid }}_${{ needs.metadata.outputs.release_tag }}" >> "$GITHUB_OUTPUT"
-
       - name: Package Linux archive
         if: matrix.platform == 'linux'
         shell: bash
         run: |
           mkdir -p artifact
           cd publish
-          zip -r "../artifact/${{ steps.artifact.outputs.name }}.zip" . -x '*.dbg' -x '*.pdb' -x '*.xml'
+          zip -r "../artifact/${{ env.APP_NAME }}_GUI_${{ matrix.rid }}_${{ needs.metadata.outputs.release_tag }}.zip" . -x '*.dbg' -x '*.pdb' -x '*.xml'
 
       - name: Package Windows archive
         if: matrix.platform == 'windows'
@@ -96,7 +93,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force artifact | Out-Null
           $files = Get-ChildItem publish -Recurse -File -Exclude *.pdb,*.xml,*.dbg | ForEach-Object { $_.FullName }
-          Compress-Archive -Path $files -DestinationPath "artifact/${{ steps.artifact.outputs.name }}.zip"
+          Compress-Archive -Path $files -DestinationPath "artifact/${{ env.APP_NAME }}_GUI_${{ matrix.rid }}_${{ needs.metadata.outputs.release_tag }}.zip"
 
       - name: Assemble macOS application bundle
         if: matrix.platform == 'macos'
@@ -149,19 +146,156 @@ jobs:
         shell: bash
         run: |
           mkdir -p artifact
-          ditto -c -k --sequesterRsrc --keepParent "$RUNNER_TEMP/${{ env.APP_NAME }}.app" "artifact/${{ steps.artifact.outputs.name }}.zip"
+          ditto -c -k --sequesterRsrc --keepParent "$RUNNER_TEMP/${{ env.APP_NAME }}.app" "artifact/${{ env.APP_NAME }}_GUI_${{ matrix.rid }}_${{ needs.metadata.outputs.release_tag }}.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.APP_NAME }}_${{ matrix.rid }}
+          name: GUI_${{ matrix.rid }}
+          path: artifact/*.zip
+          if-no-files-found: error
+
+  build-cli-native:
+    name: CLI / ${{ matrix.rid }}
+    runs-on: ${{ matrix.runner }}
+    needs: metadata
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            rid: win-x64
+            platform: windows
+          - runner: windows-latest
+            rid: win-arm64
+            platform: windows
+          - runner: macos-14
+            rid: osx-x64
+            platform: macos
+          - runner: macos-14
+            rid: osx-arm64
+            platform: macos
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_VERSION }}
+      - name: Publish NativeAOT CLI
+        run: >-
+          dotnet publish ${{ env.CLI_PROJECT_PATH }}
+          --configuration Release
+          --runtime ${{ matrix.rid }}
+          --self-contained true
+          --output publish
+      - name: Package CLI for Windows
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          Rename-Item "publish/FFDecsaSharp.Cli.exe" "${{ env.CLI_NAME }}.exe"
+          New-Item -ItemType Directory -Force artifact | Out-Null
+          Compress-Archive -Path "publish/${{ env.CLI_NAME }}.exe" -DestinationPath "artifact/${{ env.APP_NAME }}_CLI_${{ matrix.rid }}_${{ needs.metadata.outputs.release_tag }}.zip"
+      - name: Package CLI for macOS
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          mv publish/FFDecsaSharp.Cli publish/${{ env.CLI_NAME }}
+          mkdir artifact
+          (cd publish && zip -9 "../artifact/${{ env.APP_NAME }}_CLI_${{ matrix.rid }}_${{ needs.metadata.outputs.release_tag }}.zip" "${{ env.CLI_NAME }}")
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CLI_${{ matrix.rid }}
+          path: artifact/*.zip
+          if-no-files-found: error
+
+  build-cli-linux-musl-x64:
+    name: CLI / linux-musl-x64 (static)
+    runs-on: ubuntu-latest
+    needs: metadata
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build in Alpine with the musl SDK
+        run: |
+          docker run --rm \
+            -v "$PWD:/workspace" \
+            -w /workspace \
+            alpine:3.21 \
+            sh -c '
+              set -e
+              apk add --no-cache bash wget tar clang build-base cmake icu-dev icu-data-full zlib-static openssl-dev openssl-libs-static
+              DOTNET_SDK_URL="https://builds.dotnet.microsoft.com/dotnet/Sdk/${{ env.DOTNET_SDK_VERSION }}/dotnet-sdk-${{ env.DOTNET_SDK_VERSION }}-linux-musl-x64.tar.gz"
+              wget -nv "$DOTNET_SDK_URL" -O dotnet-sdk.tar.gz
+              mkdir -p /opt/dotnet
+              tar -xzf dotnet-sdk.tar.gz -C /opt/dotnet
+              export PATH="/opt/dotnet:$PATH"
+              dotnet publish ${{ env.CLI_PROJECT_PATH }} -r linux-musl-x64 -c Release --self-contained true -o /workspace/publish
+            '
+      - name: Verify and package static CLI
+        shell: bash
+        run: |
+          mv publish/FFDecsaSharp.Cli publish/${{ env.CLI_NAME }}
+          file publish/${{ env.CLI_NAME }} | grep -q 'statically linked'
+          mkdir artifact
+          (cd publish && zip -9 "../artifact/${{ env.APP_NAME }}_CLI_linux-x64_${{ needs.metadata.outputs.release_tag }}.zip" "${{ env.CLI_NAME }}")
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CLI_linux-x64
+          path: artifact/*.zip
+          if-no-files-found: error
+
+  build-cli-linux-musl-arm64:
+    name: CLI / linux-musl-arm64 (static)
+    runs-on: ubuntu-latest
+    needs: metadata
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cross-build in the verified Alpine sysroot container
+        run: |
+          docker run --rm \
+            -v "$PWD:/workspace" \
+            -w /workspace \
+            mcr.microsoft.com/dotnet-buildtools/prereqs:ubuntu-22.04-cross-arm64-alpine \
+            bash -c '
+              set -e
+              apt-get update || true
+              apt-get install -y build-essential clang binutils-aarch64-linux-gnu
+              ALPINE_REPO="https://dl-cdn.alpinelinux.org/alpine/v3.21/main/aarch64"
+              SSL_APK_NAME=$(wget -qO- "$ALPINE_REPO/" | grep -o "openssl-dev-[0-9.]\\+-r[0-9]\\+.apk" | head -n 1)
+              SSL_VER=$(echo "$SSL_APK_NAME" | sed "s/openssl-dev-//;s/.apk//")
+              mkdir -p /tmp/ssl_setup && cd /tmp/ssl_setup
+              wget -q "$ALPINE_REPO/openssl-libs-static-$SSL_VER.apk"
+              wget -q "$ALPINE_REPO/openssl-dev-$SSL_VER.apk"
+              for f in *.apk; do tar -xf "$f" -C /crossrootfs/arm64; done
+              cd /workspace
+              export CROSS_COMPILE_PREFIX="aarch64-alpine-linux-musl-"
+              export CC="${CROSS_COMPILE_PREFIX}clang"
+              export CXX="${CROSS_COMPILE_PREFIX}clang++"
+              export OPENSSL_ROOT_DIR="/crossrootfs/arm64/usr"
+              export OPENSSL_USE_STATIC_LIBS=TRUE
+              export CFLAGS="--sysroot=/crossrootfs/arm64 --target=aarch64-alpine-linux-musl"
+              DOTNET_SDK_URL="https://builds.dotnet.microsoft.com/dotnet/Sdk/${{ env.DOTNET_SDK_VERSION }}/dotnet-sdk-${{ env.DOTNET_SDK_VERSION }}-linux-x64.tar.gz"
+              wget -nv "$DOTNET_SDK_URL" -O dotnet-sdk.tar.gz
+              mkdir -p /opt/dotnet
+              tar -xzf dotnet-sdk.tar.gz -C /opt/dotnet
+              export PATH="/opt/dotnet:$PATH"
+              dotnet publish ${{ env.CLI_PROJECT_PATH }} -r linux-musl-arm64 -c Release --self-contained true -p:SysRoot=/crossrootfs/arm64 -p:CppCompilerAndLinker=clang -p:StripSymbols=true -o /workspace/publish
+            '
+      - name: Verify and package static CLI
+        shell: bash
+        run: |
+          mv publish/FFDecsaSharp.Cli publish/${{ env.CLI_NAME }}
+          file publish/${{ env.CLI_NAME }} | grep -q 'statically linked'
+          mkdir artifact
+          (cd publish && zip -9 "../artifact/${{ env.APP_NAME }}_CLI_linux-arm64_${{ needs.metadata.outputs.release_tag }}.zip" "${{ env.CLI_NAME }}")
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CLI_linux-arm64
           path: artifact/*.zip
           if-no-files-found: error
 
   release:
     if: ${{ inputs.publish_release }}
     runs-on: ubuntu-latest
-    needs: [metadata, build]
+    needs: [metadata, build-gui, build-cli-native, build-cli-linux-musl-x64, build-cli-linux-musl-arm64]
     permissions:
       contents: write
     steps:
@@ -175,6 +309,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.metadata.outputs.release_tag }}
-          name: Build (${{ needs.metadata.outputs.release_time }})
+          name: FFDecsaSharp build (${{ needs.metadata.outputs.release_time }}) — GUI + CLI
           generate_release_notes: true
           files: release/*.zip
