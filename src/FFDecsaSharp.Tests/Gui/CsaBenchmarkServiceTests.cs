@@ -1,5 +1,6 @@
 using FFDecsaSharp.Gui.Services;
 using FFDecsaSharp.Gui.Models;
+using FFDecsaSharp.TransportStream;
 
 namespace FFDecsaSharp.Tests.Gui;
 
@@ -43,6 +44,6 @@ public sealed class CsaBenchmarkServiceTests
     public void PacketBlockHasAtLeastOneBitsliceBatchPerConfiguredWorker()
     {
         int workerCount = Math.Min(2, AppSettingsService.MaximumDecryptionWorkerCount);
-        Assert.True(PacketBlockDecryptionService.GetPacketsPerBlock(workerCount) >= workerCount * CsaBenchmarkService.BatchSize);
+        Assert.True(TransportStreamDecryptionService.GetPacketsPerBlock(workerCount) >= workerCount * CsaBenchmarkService.BatchSize);
     }
 }

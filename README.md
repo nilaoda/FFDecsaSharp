@@ -73,6 +73,58 @@ benchmark workload to tune for the target machine.
 These C comparisons are against FFdecsa's `PARALLEL_128_2LONG` reference
 configuration, not a claim against every possible native FFdecsa backend.
 
+## CLI
+
+`FFDecsaSharp.Cli` is a self-contained, NativeAOT command-line interface for
+headless and scripted use. It never reads the GUI settings file: its default is
+one worker, and every runtime setting is explicit on the command line.
+
+Decrypt one input with a single control word for both key parities:
+
+```sh
+ffdecsasharp decrypt \
+  --input encrypted.ts --output decrypted.ts \
+  --cw 010203040506 --workers 4
+```
+
+Use separate even and odd words, concatenate multiple inputs, or restrict the
+packet range when needed:
+
+```sh
+ffdecsasharp decrypt \
+  --input part-1.ts --input part-2.ts --output output.ts \
+  --even-cw 010203040506 --odd-cw A1A2A3A4A5A6 \
+  --offset 0 --limit 0 --workers 4 --overwrite
+```
+
+Control words accept either six bytes (12 hexadecimal characters; DVB checksum
+bytes are derived) or eight complete bytes (16 hexadecimal characters). Final
+results can be emitted as JSON with `--json`; progress is written to standard
+error, so standard output remains script-friendly. Run `ffdecsasharp --help`
+for the full interface. CLI text automatically follows the operating-system
+language where it can be detected, or may be selected explicitly with
+`--lang en`, `--lang zh-Hans`, or `--lang zh-Hant`; it still never reads the
+GUI settings file.
+
+The same deterministic workload as the GUI benchmark is available without a
+desktop environment:
+
+```sh
+ffdecsasharp benchmark --workers 4 --batches 15000 --json
+```
+
+Release artifacts are NativeAOT binaries for Windows, macOS, and Linux. Linux
+`x64` and `arm64` artifacts are built in the Alpine musl Docker environments
+used by N_m3u8DL-RE and verified as statically linked, avoiding a host libc
+dependency. Each release contains both clearly named artifact groups:
+`FFDecsaSharp_GUI_<rid>_...` for the desktop app and
+`FFDecsaSharp_CLI_<rid>_...` for the command-line binary. During development,
+run the CLI with:
+
+```sh
+dotnet run -c Release --project src/FFDecsaSharp.Cli/FFDecsaSharp.Cli.csproj -- --help
+```
+
 ## Build And Test
 
 ```sh
@@ -106,6 +158,7 @@ The probe reports the selected block backends plus end-to-end, stream, and block
 ## Layout
 
 - `src/FFDecsaSharp`: library and DVB-CSA implementation.
+- `src/FFDecsaSharp.Cli`: NativeAOT command-line decryptor and benchmark entry point.
 - `src/FFDecsaSharp.Tests`: unit, differential, and FFdecsa compatibility tests.
 - `src/FFDecsaSharp.Benchmarks`: BenchmarkDotNet performance checks.
 - `src/FFDecsaSharp.PerfHarness`: dependency-free, machine-readable throughput harness.

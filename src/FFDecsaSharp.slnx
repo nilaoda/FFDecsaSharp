@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="FFDecsaSharp/FFDecsaSharp.csproj" />
+  <Project Path="FFDecsaSharp.Cli/FFDecsaSharp.Cli.csproj" />
   <Project Path="FFDecsaSharp.Benchmarks/FFDecsaSharp.Benchmarks.csproj" />
   <Project Path="FFDecsaSharp.PerfHarness/FFDecsaSharp.PerfHarness.csproj" />
   <Project Path="FFDecsaSharp.Gui/FFDecsaSharp.Gui.csproj" />

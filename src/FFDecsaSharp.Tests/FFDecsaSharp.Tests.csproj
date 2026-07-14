@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\FFDecsaSharp\FFDecsaSharp.csproj" />
+    <ProjectReference Include="..\FFDecsaSharp.Cli\FFDecsaSharp.Cli.csproj" />
     <ProjectReference Include="..\FFDecsaSharp.Gui\FFDecsaSharp.Gui.csproj" />
   </ItemGroup>
 
