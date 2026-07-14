@@ -170,6 +170,13 @@
         </DataGrid.ContextMenu>
         <DataGrid.Columns>
           <DataGridTextColumn Header="{DynamicResource Column.File}" Binding="{Binding FileName}" Width="*" MinWidth="220" />
+          <DataGridTemplateColumn Header="{DynamicResource Column.Size}" Width="92">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate DataType="models:DecryptionTask">
+                <TextBlock Text="{Binding InputSize}" HorizontalAlignment="Right" />
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
           <DataGridTemplateColumn Header="{DynamicResource Column.Progress}" Width="145">
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate DataType="models:DecryptionTask">
@@ -190,9 +197,7 @@
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
           <DataGridTextColumn Header="{DynamicResource Column.Speed}" Binding="{Binding Speed}" Width="112" />
-          <DataGridTextColumn Header="{DynamicResource Column.ControlWord}" Binding="{Binding ControlWord}" Width="150" />
-          <DataGridTextColumn Header="{DynamicResource Column.Eta}" Binding="{Binding Eta}" Width="100" />
-          <DataGridTextColumn Header="{DynamicResource Column.Elapsed}" Binding="{Binding Elapsed}" Width="100" />
+          <DataGridTextColumn Header="{DynamicResource Column.Time}" Binding="{Binding Time}" Width="100" />
         </DataGrid.Columns>
       </DataGrid>
 
@@ -236,11 +241,13 @@
               <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SelectedTask.Elapsed}" FontWeight="SemiBold" />
             </Grid>
 
-            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" RowSpacing="6">
+            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="6">
               <TextBlock Classes="Muted" Text="{DynamicResource Column.Packets}" />
               <TextBlock Grid.Column="1" Text="{Binding SelectedTask.PacketCount}" FontWeight="SemiBold" />
               <TextBlock Grid.Row="1" Classes="Muted" Text="{DynamicResource Column.Decrypted}" />
               <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SelectedTask.DecryptedCount}" FontWeight="SemiBold" />
+              <TextBlock Grid.Row="2" Classes="Muted" Text="{DynamicResource Column.Size}" />
+              <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SelectedTask.InputSize}" FontWeight="SemiBold" />
             </Grid>
 
             <StackPanel Spacing="4">

@@ -69,6 +69,8 @@
   <data name="Column.Progress"><value>Progress</value></data>
   <data name="Column.Status"><value>Status</value></data>
   <data name="Column.Speed"><value>Speed</value></data>
+  <data name="Column.Size"><value>Input size</value></data>
+  <data name="Column.Time"><value>Time</value></data>
   <data name="Detail.Empty"><value>Select a task to view its output path, progress, and log.</value></data>
   <data name="Error.ControlWords"><value>Unable to schedule control words.</value></data>
   <data name="Error.InvalidKeys"><value>Control words must contain 12 or 16 hexadecimal characters.</value></data>

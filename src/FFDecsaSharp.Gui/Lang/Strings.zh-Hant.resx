@@ -69,6 +69,8 @@
   <data name="Column.Progress"><value>進度</value></data>
   <data name="Column.Status"><value>狀態</value></data>
   <data name="Column.Speed"><value>速度</value></data>
+  <data name="Column.Size"><value>輸入大小</value></data>
+  <data name="Column.Time"><value>時間</value></data>
   <data name="Detail.Empty"><value>選擇任務後檢視輸出路徑、進度和記錄。</value></data>
   <data name="Error.ControlWords"><value>無法產生控制字計畫。</value></data>
   <data name="Error.InvalidKeys"><value>控制字必須為 12 或 16 個十六進位字元。</value></data>

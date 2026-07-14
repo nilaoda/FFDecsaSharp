@@ -69,6 +69,8 @@
   <data name="Column.Progress"><value>进度</value></data>
   <data name="Column.Status"><value>状态</value></data>
   <data name="Column.Speed"><value>速度</value></data>
+  <data name="Column.Size"><value>输入大小</value></data>
+  <data name="Column.Time"><value>时间</value></data>
   <data name="Detail.Empty"><value>选择任务后查看输出路径、进度和日志。</value></data>
   <data name="Error.ControlWords"><value>无法生成控制字计划。</value></data>
   <data name="Error.InvalidKeys"><value>控制字必须为 12 或 16 个十六进制字符。</value></data>

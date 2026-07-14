@@ -32,6 +32,7 @@ public partial class DecryptionTask : ObservableObject
         Id = Interlocked.Increment(ref _nextId);
         InputPaths = inputPaths.Where(static path => !string.IsNullOrWhiteSpace(path)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         if (InputPaths.Count == 0) throw new ArgumentException("At least one input path is required.", nameof(inputPaths));
+        InputSizeBytes = TryGetInputSize(InputPaths);
         _outputPath = outputPath;
         EvenKey = evenKey;
         OddKey = oddKey;
@@ -41,6 +42,8 @@ public partial class DecryptionTask : ObservableObject
 
     public int Id { get; }
     public IReadOnlyList<string> InputPaths { get; }
+    public long? InputSizeBytes { get; }
+    public string InputSize => InputSizeBytes is { } bytes ? ThroughputFormatter.FormatFileSize(bytes) : "-";
     public string FileName => InputPaths.Count == 1
         ? Path.GetFileName(InputPaths[0])
         : $"{Path.GetFileName(InputPaths[0])} + {InputPaths.Count - 1}";
@@ -52,6 +55,12 @@ public partial class DecryptionTask : ObservableObject
     public string PacketRange => PacketLimit == 0
         ? $"{PacketOffset} -"
         : $"{PacketOffset} - {PacketOffset + PacketLimit - 1}";
+    public string Time => StatusKey switch
+    {
+        LocKeys.Status_Running => Eta,
+        LocKeys.Status_Completed => Elapsed,
+        _ => "-",
+    };
 
     public void SetStatus(string resourceKey)
     {
@@ -60,4 +69,26 @@ public partial class DecryptionTask : ObservableObject
     }
 
     public void RefreshLocalizedText() => Status = LocalizationService.Get(StatusKey);
+
+    partial void OnStatusKeyChanged(string value) => OnPropertyChanged(nameof(Time));
+    partial void OnElapsedChanged(string value) => OnPropertyChanged(nameof(Time));
+    partial void OnEtaChanged(string value) => OnPropertyChanged(nameof(Time));
+
+    private static long? TryGetInputSize(IReadOnlyList<string> inputPaths)
+    {
+        try
+        {
+            long total = 0;
+            foreach (string inputPath in inputPaths)
+            {
+                var file = new FileInfo(inputPath);
+                if (!file.Exists) return null;
+                total = checked(total + file.Length);
+            }
+            return total;
+        }
+        catch (IOException) { return null; }
+        catch (UnauthorizedAccessException) { return null; }
+        catch (OverflowException) { return null; }
+    }
 }
