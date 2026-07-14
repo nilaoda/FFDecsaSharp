@@ -311,6 +311,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.metadata.outputs.release_tag }}
-          name: FFDecsaSharp build (${{ needs.metadata.outputs.release_time }}) — GUI + CLI
+          name: FFDecsaSharp build (${{ needs.metadata.outputs.release_time }})
           generate_release_notes: true
           files: release/*.zip
