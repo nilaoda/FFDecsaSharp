@@ -4,6 +4,10 @@ FFDecsaSharp is a modern .NET 10 implementation of DVB-CSA packet decryption, re
 
 The library is span-first, NativeAOT-compatible, and keeps packet decryption paths free of managed allocations.
 
+## Source And Implementation Note
+
+The retained reference FFdecsa source under `references/FFdecsa` originates from [gfto/tsdecrypt/FFdecsa](https://github.com/gfto/tsdecrypt/tree/master/FFdecsa). Apart from that reference code, approximately 99% of this project's code was implemented with Codex and GPT-5.6.
+
 ## Status
 
 - Decrypts MPEG-TS packets scrambled with even or odd DVB-CSA control words.
