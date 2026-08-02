@@ -122,4 +122,5 @@
   <data name="Status.Failed"><value>Failed</value></data>
   <data name="Status.Queued"><value>Queued</value></data>
   <data name="Status.Running"><value>Running</value></data>
+  <data name="Status.Stopped"><value>Stopped</value></data>
 </root>

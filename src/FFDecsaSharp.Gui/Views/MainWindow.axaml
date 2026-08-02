@@ -89,7 +89,7 @@
             </StackPanel>
             <ToolTip.Tip><TextBlock Text="{DynamicResource Main.Start}" /></ToolTip.Tip>
           </Button>
-          <Button Classes="ToolbarButton" Command="{Binding CancelQueueCommand}" IsEnabled="{Binding CanStopQueue}">
+          <Button Classes="ToolbarButton" Command="{Binding StopSelectedCommand}" IsEnabled="{Binding CanStopSelected}">
             <StackPanel Orientation="Horizontal" Spacing="5">
               <lucide:LucideIcon Kind="Square" Size="14" />
               <TextBlock Text="{DynamicResource Main.Stop}" />
@@ -164,8 +164,15 @@
                 x:CompileBindings="False">
         <DataGrid.ContextMenu>
           <ContextMenu>
-            <MenuItem Header="{DynamicResource Main.Start}" Command="{Binding StartSelectedCommand}" />
-            <MenuItem Header="{DynamicResource Main.Delete}" Command="{Binding DeleteSelectedCommand}" />
+            <MenuItem Header="{DynamicResource Main.Start}"
+                      Command="{Binding StartSelectedCommand}"
+                      IsEnabled="{Binding CanStartSelected}" />
+            <MenuItem Header="{DynamicResource Main.Stop}"
+                      Command="{Binding StopSelectedCommand}"
+                      IsEnabled="{Binding CanStopSelected}" />
+            <MenuItem Header="{DynamicResource Main.Delete}"
+                      Command="{Binding DeleteSelectedCommand}"
+                      IsEnabled="{Binding CanDeleteSelected}" />
           </ContextMenu>
         </DataGrid.ContextMenu>
         <DataGrid.Columns>

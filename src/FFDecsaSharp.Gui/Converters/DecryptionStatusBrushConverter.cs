@@ -16,6 +16,8 @@ public sealed class DecryptionStatusBrushConverter : IValueConverter
     private static readonly IBrush FailedForeground = Brush.Parse("#991B1B");
     private static readonly IBrush CanceledBackground = Brush.Parse("#E2E8F0");
     private static readonly IBrush CanceledForeground = Brush.Parse("#475569");
+    private static readonly IBrush StoppedBackground = Brush.Parse("#F1F5F9");
+    private static readonly IBrush StoppedForeground = Brush.Parse("#334155");
 
     public string Variant { get; set; } = "Background";
 
@@ -29,6 +31,7 @@ public sealed class DecryptionStatusBrushConverter : IValueConverter
             LocKeys.Status_Running => foreground ? RunningForeground : RunningBackground,
             LocKeys.Status_Completed => foreground ? CompletedForeground : CompletedBackground,
             LocKeys.Status_Failed => foreground ? FailedForeground : FailedBackground,
+            LocKeys.Status_Stopped => foreground ? StoppedForeground : StoppedBackground,
             _ => foreground ? CanceledForeground : CanceledBackground,
         };
     }

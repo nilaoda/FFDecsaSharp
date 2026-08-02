@@ -12,6 +12,7 @@ namespace FFDecsaSharp.Gui.ViewModels;
 public partial class MainWindowViewModel : ViewModelBase
 {
     private readonly ConcurrentDictionary<int, CancellationTokenSource> _runningTasks = new();
+    private readonly ConcurrentDictionary<int, byte> _stopRequestedTasks = new();
     private CancellationTokenSource _globalCts = new();
     private bool _queueLoopRunning;
 
@@ -32,10 +33,20 @@ public partial class MainWindowViewModel : ViewModelBase
     public string QueueSummary => L.App_TaskSummary(Tasks.Count);
     public bool HasRunningTasks => _runningTasks.Count > 0;
     public bool HasQueuedTasks => Tasks.Any(t => t.StatusKey == LocKeys.Status_Queued);
-    public bool CanStartSelected => !HasRunningTasks || _runningTasks.Count < EffectiveMaxConcurrency;
+    public bool CanStartSelected => SelectedTask?.StatusKey switch
+    {
+        LocKeys.Status_Stopped => true,
+        LocKeys.Status_Queued => _runningTasks.Count < EffectiveMaxConcurrency,
+        _ => false,
+    };
+    public bool CanStopSelected => SelectedTask is { } task
+        && (task.StatusKey == LocKeys.Status_Queued
+            || task.IsRunning
+                && _runningTasks.TryGetValue(task.Id, out CancellationTokenSource? cts)
+                && !cts.IsCancellationRequested);
     public bool CanDeleteSelected => SelectedTask is { IsRunning: false };
-    public bool CanStopQueue => HasRunningTasks || HasQueuedTasks;
-    public bool CanStartAll => HasQueuedTasks && (!HasRunningTasks || _runningTasks.Count < EffectiveMaxConcurrency);
+    public bool CanStopQueue => _queueLoopRunning || _runningTasks.Values.Any(static cts => !cts.IsCancellationRequested);
+    public bool CanStartAll => !_queueLoopRunning && HasQueuedTasks && _runningTasks.Count < EffectiveMaxConcurrency;
 
     public MainWindowViewModel()
     {
@@ -47,19 +58,50 @@ public partial class MainWindowViewModel : ViewModelBase
     [RelayCommand]
     private void StartSelected()
     {
-        if (SelectedTask is null || SelectedTask.StatusKey != LocKeys.Status_Queued) return;
-        EnqueueAndRun();
+        if (SelectedTask is not { } task) return;
+
+        bool wasStopped = task.StatusKey == LocKeys.Status_Stopped;
+        if (wasStopped)
+        {
+            ResetTaskProgress(task);
+            task.SetStatus(LocKeys.Status_Queued);
+        }
+
+        if (TryStartTask(task, _globalCts.Token)) return;
+        if (wasStopped && !_queueLoopRunning) _ = QueueLoopAsync(_globalCts.Token);
+        RefreshQueueState();
     }
 
     [RelayCommand]
-    private void StartAll() => EnqueueAndRun();
+    private void StartAll()
+    {
+        if (!_queueLoopRunning) _ = QueueLoopAsync(_globalCts.Token);
+    }
+
+    [RelayCommand]
+    private void StopSelected()
+    {
+        if (SelectedTask is not { } task) return;
+
+        if (_runningTasks.TryGetValue(task.Id, out CancellationTokenSource? cts))
+        {
+            _stopRequestedTasks[task.Id] = 0;
+            cts.Cancel();
+        }
+        else if (task.StatusKey == LocKeys.Status_Queued)
+        {
+            task.SetStatus(LocKeys.Status_Stopped);
+        }
+        RefreshQueueState();
+    }
 
     [RelayCommand]
     private void CancelQueue()
     {
-        _globalCts.Cancel();
-        _globalCts.Dispose();
+        CancellationTokenSource cts = _globalCts;
         _globalCts = new CancellationTokenSource();
+        cts.Cancel();
+        cts.Dispose();
         RefreshQueueState();
     }
 
@@ -79,18 +121,41 @@ public partial class MainWindowViewModel : ViewModelBase
         OnPropertyChanged(nameof(DetailPaneButtonText));
     }
 
-    private void EnqueueAndRun()
+    private static void ResetTaskProgress(DecryptionTask task)
     {
-        RefreshQueueState();
-        if (!_queueLoopRunning) _ = QueueLoopAsync();
+        task.Progress = 0;
+        task.PacketCount = "-";
+        task.DecryptedCount = "-";
+        task.Elapsed = "-";
+        task.Eta = "-";
+        task.Speed = ThroughputFormatter.Zero;
+        task.RawSpeed = 0;
+        task.Log = "";
     }
 
-    private async Task QueueLoopAsync()
+    private bool TryStartTask(DecryptionTask task, CancellationToken cancellationToken)
+    {
+        if (task.StatusKey != LocKeys.Status_Queued || _runningTasks.Count >= EffectiveMaxConcurrency) return false;
+
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (!_runningTasks.TryAdd(task.Id, cts))
+        {
+            cts.Dispose();
+            return false;
+        }
+
+        _ = RunTaskAsync(task, cts);
+        RefreshQueueState();
+        return true;
+    }
+
+    private async Task QueueLoopAsync(CancellationToken cancellationToken)
     {
         _queueLoopRunning = true;
+        RefreshQueueState();
         try
         {
-            while (!_globalCts.IsCancellationRequested)
+            while (!cancellationToken.IsCancellationRequested)
             {
                 DecryptionTask? taskToStart = null;
                 if (_runningTasks.Count < EffectiveMaxConcurrency)
@@ -98,14 +163,12 @@ public partial class MainWindowViewModel : ViewModelBase
 
                 if (taskToStart is not null)
                 {
-                    var cts = CancellationTokenSource.CreateLinkedTokenSource(_globalCts.Token);
-                    if (_runningTasks.TryAdd(taskToStart.Id, cts))
-                        _ = RunTaskAsync(taskToStart, cts);
-                    await Task.Delay(50, _globalCts.Token).ContinueWith(static _ => { }, CancellationToken.None);
+                    TryStartTask(taskToStart, cancellationToken);
+                    await Task.Delay(50, cancellationToken);
                 }
                 else if (HasRunningTasks)
                 {
-                    await Task.Delay(200, _globalCts.Token).ContinueWith(static _ => { }, CancellationToken.None);
+                    await Task.Delay(200, cancellationToken);
                 }
                 else
                 {
@@ -128,6 +191,8 @@ public partial class MainWindowViewModel : ViewModelBase
             task.SetStatus(LocKeys.Status_Failed);
             task.Log = L.Error_InvalidKeys;
             _runningTasks.TryRemove(task.Id, out _);
+            cts.Dispose();
+            RefreshQueueState();
             return;
         }
 
@@ -168,7 +233,9 @@ public partial class MainWindowViewModel : ViewModelBase
         }
         catch (OperationCanceledException)
         {
-            task.SetStatus(LocKeys.Status_Canceled);
+            task.SetStatus(_stopRequestedTasks.TryRemove(task.Id, out _)
+                ? LocKeys.Status_Stopped
+                : LocKeys.Status_Canceled);
         }
         catch (Exception ex)
         {
@@ -184,8 +251,9 @@ public partial class MainWindowViewModel : ViewModelBase
                 task.RawSpeed = 0;
                 task.Eta = "-";
             }
-            cts.Dispose();
+            _stopRequestedTasks.TryRemove(task.Id, out _);
             _runningTasks.TryRemove(task.Id, out _);
+            cts.Dispose();
             UpdateGlobalSpeed();
             RefreshQueueState();
         }
@@ -193,7 +261,6 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private void UpdateGlobalSpeed()
     {
-        if (_runningTasks.Count == 0) return;
         double total = 0;
         foreach (DecryptionTask task in Tasks.Where(t => t.IsRunning))
             total += task.RawSpeed;
@@ -205,6 +272,7 @@ public partial class MainWindowViewModel : ViewModelBase
         OnPropertyChanged(nameof(HasRunningTasks));
         OnPropertyChanged(nameof(HasQueuedTasks));
         OnPropertyChanged(nameof(CanStartSelected));
+        OnPropertyChanged(nameof(CanStopSelected));
         OnPropertyChanged(nameof(CanDeleteSelected));
         OnPropertyChanged(nameof(CanStopQueue));
         OnPropertyChanged(nameof(CanStartAll));
@@ -222,6 +290,7 @@ public partial class MainWindowViewModel : ViewModelBase
     partial void OnSelectedTaskChanged(DecryptionTask? value)
     {
         OnPropertyChanged(nameof(CanStartSelected));
+        OnPropertyChanged(nameof(CanStopSelected));
         OnPropertyChanged(nameof(CanDeleteSelected));
     }
 
