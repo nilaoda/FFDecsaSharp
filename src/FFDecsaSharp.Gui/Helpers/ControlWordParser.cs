@@ -2,6 +2,28 @@ namespace FFDecsaSharp.Gui.Helpers;
 
 internal static class ControlWordParser
 {
+    public static string NormalizeInput(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return string.Empty;
+
+        int nonWhitespaceCount = 0;
+        foreach (char character in text)
+        {
+            if (!char.IsWhiteSpace(character)) nonWhitespaceCount++;
+        }
+
+        if (nonWhitespaceCount == text.Length) return text;
+
+        return string.Create(nonWhitespaceCount, text, static (buffer, source) =>
+        {
+            int index = 0;
+            foreach (char character in source)
+            {
+                if (!char.IsWhiteSpace(character)) buffer[index++] = character;
+            }
+        });
+    }
+
     public static bool TryParse(string? text, out byte[] controlWord)
     {
         controlWord = [];
@@ -9,7 +31,7 @@ internal static class ControlWordParser
 
         try
         {
-            byte[] input = Convert.FromHexString(text.Trim());
+            byte[] input = Convert.FromHexString(NormalizeInput(text));
             if (input.Length == 8)
             {
                 controlWord = input;

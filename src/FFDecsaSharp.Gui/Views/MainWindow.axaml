@@ -7,7 +7,7 @@
              xmlns:lucide="clr-namespace:Lucide.Avalonia;assembly=Lucide.Avalonia"
              x:Class="FFDecsaSharp.Gui.Views.MainWindow"
              x:DataType="vm:MainWindowViewModel"
-             Title="{DynamicResource App.Title}"
+             Title="{Binding AppTitle}"
              Icon="/Assets/app-icon.png"
              Width="1180" Height="720"
              MinWidth="900" MinHeight="560"

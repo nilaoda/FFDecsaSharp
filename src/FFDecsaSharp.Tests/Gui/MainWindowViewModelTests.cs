@@ -19,9 +19,11 @@ public sealed class MainWindowViewModelTests
 
             LocalizationService.Apply(LanguageMode.SimplifiedChinese);
 
+            Assert.Equal("FFDecsaSharp v0.0.2", viewModel.AppTitle);
             Assert.Equal("详情", viewModel.DetailPaneButtonText);
             Assert.Equal("就绪", viewModel.StatusText);
             Assert.Contains(nameof(MainWindowViewModel.DetailPaneButtonText), changedProperties);
+            Assert.Contains(nameof(MainWindowViewModel.AppTitle), changedProperties);
             Assert.Contains(nameof(MainWindowViewModel.QueueSummary), changedProperties);
             Assert.Contains(nameof(MainWindowViewModel.StatusText), changedProperties);
         }

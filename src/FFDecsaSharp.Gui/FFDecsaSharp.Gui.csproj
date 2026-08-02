@@ -12,6 +12,7 @@
     <RootNamespace>FFDecsaSharp.Gui</RootNamespace>
     <Product>FFDecsaSharp</Product>
     <Title>FFDecsaSharp</Title>
+    <Version>0.0.2</Version>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <IsAotCompatible>true</IsAotCompatible>
     <PublishAot>true</PublishAot>

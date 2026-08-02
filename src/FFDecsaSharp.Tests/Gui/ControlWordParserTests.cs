@@ -21,6 +21,14 @@ public sealed class ControlWordParserTests
     }
 
     [Fact]
+    public void TryParseAcceptsControlWordsWithWhitespace()
+    {
+        Assert.True(ControlWordParser.TryParse("20 24 05 49 02 AA AA 56", out byte[] controlWord));
+
+        Assert.Equal([0x20, 0x24, 0x05, 0x49, 0x02, 0xAA, 0xAA, 0x56], controlWord);
+    }
+
+    [Fact]
     public void TryParseRejectsOtherLengths()
     {
         Assert.False(ControlWordParser.TryParse("01020304050607", out _));

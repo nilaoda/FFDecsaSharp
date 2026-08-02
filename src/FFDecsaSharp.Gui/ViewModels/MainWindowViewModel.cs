@@ -23,6 +23,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
     public ObservableCollection<DecryptionTask> Tasks { get; } = [];
     public int[] ConcurrencyOptions { get; } = [1, 2, 3, 5];
+    public string AppTitle => $"{L.App_Title} v{AppVersion.Current}";
     public string DetailPaneButtonText => IsDetailPaneOpen ? L.Main_CollapseDetails : L.Main_ShowDetails;
     public string DecryptionWorkerCountText => AppSettingsService.DecryptionWorkerCount.ToString();
 
@@ -255,6 +256,7 @@ public partial class MainWindowViewModel : ViewModelBase
     private void LocalizationService_LanguageChanged(object? sender, EventArgs e)
     {
         foreach (DecryptionTask task in Tasks) task.RefreshLocalizedText();
+        OnPropertyChanged(nameof(AppTitle));
         OnPropertyChanged(nameof(DetailPaneButtonText));
         RefreshQueueState();
     }

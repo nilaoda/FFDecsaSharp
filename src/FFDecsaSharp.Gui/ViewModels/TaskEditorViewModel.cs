@@ -39,6 +39,7 @@ public partial class TaskEditorViewModel : ViewModelBase
 
     public bool TryCreateTask()
     {
+        NormalizeControlWordInputs();
         string[] inputPaths = GetInputPaths();
         if (inputPaths.Length == 0)
         {
@@ -89,6 +90,13 @@ public partial class TaskEditorViewModel : ViewModelBase
     {
         if (!value) { EvenKey = ControlWord; OddKey = ControlWord; }
         OnPropertyChanged(nameof(CanQueueEditor));
+    }
+
+    private void NormalizeControlWordInputs()
+    {
+        ControlWord = ControlWordParser.NormalizeInput(ControlWord);
+        EvenKey = ControlWordParser.NormalizeInput(EvenKey);
+        OddKey = ControlWordParser.NormalizeInput(OddKey);
     }
 
     private string[] GetInputPaths() => InputFilesText.Split([';', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);

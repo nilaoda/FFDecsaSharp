@@ -77,7 +77,7 @@
           <TextBlock Text="{DynamicResource App.Source}" Classes="SectionTitle" />
           <StackPanel Spacing="6">
             <TextBlock Text="{DynamicResource App.ControlWord}" Classes="Label" />
-            <TextBox Text="{Binding ControlWord, Mode=TwoWay}" FontFamily="{StaticResource MonospaceFontFamily}" MaxLength="16" VerticalContentAlignment="Center" />
+            <TextBox Text="{Binding ControlWord, Mode=TwoWay}" FontFamily="{StaticResource MonospaceFontFamily}" VerticalContentAlignment="Center" />
             <TextBlock Text="{DynamicResource App.KeyHint}" Classes="Hint" />
           </StackPanel>
         </StackPanel>
@@ -99,11 +99,11 @@
             <StackPanel IsVisible="{Binding UseSeparateKeys}" Spacing="8">
               <StackPanel Spacing="6">
                 <TextBlock Text="{DynamicResource App.Even}" Classes="Label" />
-                <TextBox Text="{Binding EvenKey, Mode=TwoWay}" FontFamily="{StaticResource MonospaceFontFamily}" MaxLength="16" VerticalContentAlignment="Center" />
+                <TextBox Text="{Binding EvenKey, Mode=TwoWay}" FontFamily="{StaticResource MonospaceFontFamily}" VerticalContentAlignment="Center" />
               </StackPanel>
               <StackPanel Spacing="6">
                 <TextBlock Text="{DynamicResource App.Odd}" Classes="Label" />
-                <TextBox Text="{Binding OddKey, Mode=TwoWay}" FontFamily="{StaticResource MonospaceFontFamily}" MaxLength="16" VerticalContentAlignment="Center" />
+                <TextBox Text="{Binding OddKey, Mode=TwoWay}" FontFamily="{StaticResource MonospaceFontFamily}" VerticalContentAlignment="Center" />
               </StackPanel>
             </StackPanel>
           </StackPanel>
